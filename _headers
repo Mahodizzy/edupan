@@ -1,0 +1,13 @@
+# Cabeceras de seguridad para Netlify (se aplican solas al subir la carpeta).
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Strict-Transport-Security: max-age=31536000
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://*.firebaseapp.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://www.gstatic.com; frame-src https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; img-src 'self' data: blob: https://*.googleusercontent.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'
+
+/index.html
+  Cache-Control: no-cache
+/assets/js/*
+  Cache-Control: no-cache

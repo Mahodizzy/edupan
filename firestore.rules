@@ -1,0 +1,80 @@
+rules_version = '2';
+
+// =============================================================
+//  EduPan · PPX — Reglas de seguridad de Cloud Firestore
+//  Se pegan en Firebase → Firestore Database → Reglas → Publicar.
+//  Nadie puede leer ni escribir nada si no está en esta lista.
+// =============================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Correo verificado (Google siempre lo está; con correo y
+    // contraseña hay que abrir el enlace de confirmación).
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+    function email() { return request.auth.token.email.lower(); }
+
+    // Dueña del sistema. Debe ser el mismo correo de assets/js/config.js
+    function owner() { return signedIn() && email() == 'elypiccinini298@gmail.com'; }
+
+    function acceso() { return get(/databases/$(database)/documents/ppx/acceso).data; }
+    function hasAcceso() { return exists(/databases/$(database)/documents/ppx/acceso); }
+
+    function isAdmin() {
+      return owner() || (signedIn() && hasAcceso() && email() in acceso().admins);
+    }
+    function canRead() {
+      return isAdmin() || (signedIn() && hasAcceso() && email() in acceso().lectores);
+    }
+
+    // Lista de quién entra: solo la dueña la cambia.
+    match /ppx/acceso {
+      allow read: if canRead();
+      allow write: if owner()
+        && request.resource.data.admins is list
+        && request.resource.data.lectores is list;
+    }
+
+    // Locales, categorías de gastos, gastos fijos, trabajadores,
+    // valores de ley, productos y fecha del último respaldo.
+    match /ppx/catalogo {
+      allow read: if canRead();
+      allow write: if isAdmin()
+        && request.resource.data.productos is list
+        && request.resource.data.locales is list
+        && request.resource.data.locales.size() == 3;
+    }
+
+    // Reportes: diarios de caja (CAJA), gastos (GASTO), roles de pago (ROL)
+    // y, en la propuesta por producto, ventas, entradas, pérdidas y conteos.
+    match /reportes/{reporteId} {
+      allow read: if canRead();
+      allow create, update: if isAdmin()
+        && request.resource.data.id == reporteId
+        && request.resource.data.tipo in ['CAJA', 'GASTO', 'ROL', 'VENTAS', 'INVENTARIO', 'ENTRADA', 'PERDIDA']
+        && request.resource.data.localId in ['matriz', 'suc1', 'suc2']
+        && request.resource.data.estado in ['BORRADOR', 'CONFIRMADO']
+        && request.resource.data.lineas is list
+        && request.resource.data.lineas.size() <= 1000;
+      allow delete: if isAdmin();
+    }
+
+    // Registro de actividad: se agrega, nunca se edita ni se borra.
+    match /auditoria/{id} {
+      allow read: if canRead();
+      allow create: if isAdmin()
+        && request.resource.data.id == id
+        && request.resource.data.fecha is string
+        && request.resource.data.accion is string;
+      allow update, delete: if false;
+    }
+
+    // Todo lo demás: prohibido.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
