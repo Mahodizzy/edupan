@@ -179,5 +179,61 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
 
-  PPX.excel = { build, download, colName, STYLES };
+  /* ---------- Lectura de .xlsx (para importar productos) ---------- */
+  /** Descomprime los archivos de un .xlsx (zip). Usa DecompressionStream del navegador. */
+  async function unzip(buf, wanted) {
+    const dv = new DataView(buf), u8 = new Uint8Array(buf), dec = new TextDecoder();
+    let eocd = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 66000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw new Error("El archivo no es un Excel (.xlsx) válido.");
+    const n = dv.getUint16(eocd + 10, true); let p = dv.getUint32(eocd + 16, true);
+    const out = {};
+    for (let k = 0; k < n; k++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+      const name = dec.decode(u8.subarray(p + 46, p + 46 + nl));
+      p += 46 + nl + el + cl;
+      if (!wanted(name)) continue;
+      const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true), data = u8.slice(start, start + csize);
+      if (method === 0) out[name] = dec.decode(data);
+      else if (method === 8) {
+        if (typeof DecompressionStream === "undefined") throw new Error("Este navegador no puede leer archivos Excel. Usa Chrome, Edge, Firefox o Safari actualizados.");
+        out[name] = await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+      } else throw new Error("Formato de compresión no soportado en el Excel.");
+    }
+    return out;
+  }
+  /** Lee la primera hoja de un .xlsx y devuelve sus filas como listas de valores (texto o número). */
+  async function read(buf) {
+    const f = await unzip(buf, (n) => /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml)$/.test(n));
+    const xml = (t) => new DOMParser().parseFromString(t, "application/xml");
+    const byTag = (doc, tag) => Array.from(doc.getElementsByTagNameNS("*", tag));
+    const shared = f["xl/sharedStrings.xml"] ? byTag(xml(f["xl/sharedStrings.xml"]), "si").map((si) => byTag(si, "t").map((t) => t.textContent).join("")) : [];
+    let sheet = null;
+    if (f["xl/workbook.xml"] && f["xl/_rels/workbook.xml.rels"]) {
+      const first = byTag(xml(f["xl/workbook.xml"]), "sheet")[0];
+      const rid = first && (first.getAttribute("r:id") || first.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id"));
+      const rel = byTag(xml(f["xl/_rels/workbook.xml.rels"]), "Relationship").find((r) => r.getAttribute("Id") === rid);
+      if (rel) { const t = rel.getAttribute("Target").replace(/^\/?(xl\/)?/, ""); sheet = f["xl/" + t]; }
+    }
+    if (!sheet) sheet = f[Object.keys(f).filter((k) => k.startsWith("xl/worksheets/")).sort()[0]];
+    if (!sheet) throw new Error("No se encontró ninguna hoja en el Excel.");
+    const colIdx = (ref) => { let c = 0; for (const ch of ref.replace(/\d+/g, "")) c = c * 26 + ch.charCodeAt(0) - 64; return c - 1; };
+    return byTag(xml(sheet), "row").map((row) => {
+      const out = [];
+      for (const c of byTag(row, "c")) {
+        const t = c.getAttribute("t"), v = byTag(c, "v")[0], i = colIdx(c.getAttribute("r") || "A1");
+        let val = null;
+        if (t === "s") val = v ? shared[Number(v.textContent)] : null;
+        else if (t === "inlineStr") val = byTag(c, "t").map((x) => x.textContent).join("");
+        else if (t === "str" || t === "e") val = v ? v.textContent : null;
+        else if (t === "b") val = v ? v.textContent === "1" : null;
+        else if (v) { const n = Number(v.textContent); val = isNaN(n) ? v.textContent : n; }
+        out[i] = val;
+      }
+      return out;
+    });
+  }
+
+  PPX.excel = { build, download, colName, STYLES, read };
 })(window.PPX = window.PPX || {});

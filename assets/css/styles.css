@@ -815,3 +815,23 @@ td[data-f].empty-cell:hover .add { opacity: 1; }
   .nav a { padding-block: 8px; }
   .nav-label.prop { margin-top: 8px; padding-top: 10px; }
 }
+
+/* ---------- Productos, inventario y pagos programados ---------- */
+.lnk { color: var(--gold); font-weight: 700; cursor: pointer; text-decoration: underline; }
+.prod-table td { vertical-align: middle; }
+.prod-table tr.off td { opacity: .55; }
+.inline-btn { display: flex; gap: 8px; align-items: stretch; } .inline-btn .input { flex: 1; min-width: 0; } .inline-btn .btn { white-space: nowrap; }
+.stock-now { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .88rem; padding: 10px 0; }
+.nav a .badge, .tabbar a .badge, .bell .badge { font-style: normal; margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; background: var(--bad); color: #fff; font-size: .7rem; font-weight: 800; display: inline-grid; place-items: center; }
+.tabbar a { position: relative; } .tabbar a .badge { position: absolute; top: 4px; left: 54%; margin: 0; min-width: 17px; height: 17px; font-size: .62rem; }
+.bell { position: relative; } .bell .badge { position: absolute; top: -6px; right: -6px; margin: 0; }
+.bell:hover { transform: none !important; color: var(--gold); border-color: var(--gold); }
+.pago-list { display: grid; gap: 10px; }
+.pago-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 14px; background: var(--surface); }
+.pago-item.bad { border-left-color: var(--bad); background: var(--bad-soft); }
+.pago-item > div { display: grid; gap: 3px; min-width: 0; } .pago-item .r { text-align: right; justify-items: end; }
+.pago-tag { display: flex; align-items: center; gap: 6px; grid-column: 1 / -1; color: var(--gold); font-weight: 600; }
+.pago-tag svg { width: 14px; height: 14px; }
+.pagos-pop .dialog h2 { display: flex; align-items: center; gap: 8px; } .pagos-pop .dialog h2 svg { width: 20px; height: 20px; color: var(--gold); }
+@media (max-width: 780px) { .pago-item { grid-template-columns: minmax(0, 1fr) auto; } .pago-item .btn { grid-column: 1 / -1; } }
+.pagos-pop .card-head { flex-wrap: nowrap; align-items: flex-start; }

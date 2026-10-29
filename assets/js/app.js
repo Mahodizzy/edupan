@@ -32,6 +32,7 @@
     gastos: svg('<path d="M20 7H5a2 2 0 0 1 0-4h13v4"/><path d="M3 5v14a2 2 0 0 0 2 2h15V7"/><circle cx="16" cy="14" r="1.5"/>'),
     personal: svg('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>'),
     mas: svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
+    pagos: svg('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
     "prod-panel": svg('<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>'),
     clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   };
@@ -145,18 +146,19 @@
 
   /* ---------- Estructura ---------- */
   const root = $("#root");
-  const ROUTES = ["panel", "diario", "personal", "informes", "ajustes", "mas", "prod-panel", "reportes", "inventario", "perdidas", "productos"];
-  const PROPUESTA = ["prod-panel", "reportes", "inventario", "perdidas", "productos"];
+  const ROUTES = ["panel", "diario", "pagos", "personal", "informes", "ajustes", "mas", "prod-panel", "reportes", "inventario", "perdidas", "productos"];
+  const PROPUESTA = ["prod-panel", "reportes"];
   const route = () => { const h = (location.hash || "").slice(1); return ROUTES.includes(h) ? h : "panel"; };
 
   function render() {
     if (!session) return ui.gate ? renderGate() : renderLogin();
     const r = route();
-    const nav = [["panel", "Panel"], ["diario", "Reportes diarios"], ["personal", "Personal"], ["informes", "Informes"], ["ajustes", "Ajustes"]];
-    const navProp = [["prod-panel", "Resumen por producto"], ["reportes", "Ventas"], ["inventario", "Inventario"], ["productos", "Productos"]];
-    const tabs = [["panel", "Panel"], ["diario", "Diario"], ["personal", "Personal"], ["informes", "Informes"], ["mas", "Más"]];
+    const nav = [["panel", "Panel"], ["diario", "Reportes diarios"], ["pagos", "Pagos programados"], ["inventario", "Inventario"], ["productos", "Productos"], ["personal", "Personal"], ["informes", "Informes"], ["ajustes", "Ajustes"]];
+    const navProp = [["prod-panel", "Resumen por producto"], ["reportes", "Ventas"]];
+    const tabs = [["panel", "Panel"], ["diario", "Diario"], ["pagos", "Pagos"], ["inventario", "Inventario"], ["mas", "Más"]];
     // Pérdidas vive dentro de Inventario: el menú marca Inventario
-    const link = (k, t) => `<a href="#${k}" ${r === k || (k === "inventario" && r === "perdidas") || (k === "mas" && (PROPUESTA.includes(r) || r === "ajustes")) ? 'aria-current="page"' : ""}>${ICON[k]}<span>${t}</span></a>`;
+    const npend = isAdmin() ? PPX.pagos.pendientes(db).length : 0;
+    const link = (k, t) => `<a href="#${k}" ${r === k || (k === "inventario" && r === "perdidas") || (k === "mas" && (PROPUESTA.includes(r) || ["ajustes", "informes", "personal", "productos"].includes(r))) ? 'aria-current="page"' : ""}>${ICON[k]}<span>${t}</span>${k === "pagos" && npend ? `<em class="badge">${npend}</em>` : ""}</a>`;
     const role = isAdmin() ? "Administradora" : "Solo lectura";
     root.innerHTML = `
     <div class="app">
@@ -171,7 +173,7 @@
       </aside>
       <header class="topbar">
         ${mark()}
-        <div class="right">${themeToggle(true)}<span class="pill ${isAdmin() ? "gold" : "neutral"}">${role}</span><button class="icon-btn" data-act="logout" aria-label="Cerrar sesión">${ICON.out}</button></div>
+        <div class="right">${npend ? `<button class="icon-btn bell" data-f="pago-pop" aria-label="${npend} pagos por hacer">${ICON.pagos}<em class="badge">${npend}</em></button>` : ""}${themeToggle(true)}<span class="pill ${isAdmin() ? "gold" : "neutral"}">${role}</span><button class="icon-btn" data-act="logout" aria-label="Cerrar sesión">${ICON.out}</button></div>
       </header>
       <main class="main"><div class="wrap" id="view"></div></main>
       <nav class="tabbar" aria-label="Secciones">${tabs.map(([k, t]) => link(k, t)).join("")}</nav>
@@ -185,6 +187,7 @@
     if (r === "panel") v.innerHTML = viewPanel();
     if (r === "prod-panel") v.innerHTML = viewPanelProductos();
     if (r === "diario") v.innerHTML = viewDiario();
+    if (r === "pagos") v.innerHTML = viewPagos();
     if (r === "personal") v.innerHTML = viewPersonal();
     if (r === "mas") v.innerHTML = viewMas();
     if (r === "productos") v.innerHTML = viewProductos();
@@ -198,6 +201,7 @@
     if (entering) $(".prod-grid", v)?.classList.add("enter-cards");
     else $(".prod-grid", v)?.classList.remove("enter-cards");
     countUp(v);
+    if (!ui.popupDone) { ui.popupDone = true; setTimeout(() => showPagosPopup(false), 450); }
   }
 
   /* Cifras que suben desde 0 al mostrarse */
@@ -636,92 +640,186 @@
   }
 
   /* ---------- Productos ---------- */
+  /* ---------- Productos (catálogo de EduPan) ---------- */
+  const stockTotal = (p) => { let q = 0, tr = false; for (const l of db.locales) { const s = rules.stockAt(db, l.id, p.id); if (s.tracked) { tr = true; q += s.qty; } } return tr ? q : null; };
+  const distinct = (k) => [...new Set(db.productos.map((p) => p[k]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
   function viewProductos() {
-    const q = ui.prodQuery.trim().toLowerCase();
+    const q = PPX.cat.norm(ui.prodQuery), cat = ui.prodCat || "", mar = ui.prodMarca || "";
     const list = db.productos
-      .filter((p) => (ui.prodVer === "todos" || (ui.prodVer === "activos" ? p.activo : !p.activo)) && (!q || p.nombre.toLowerCase().includes(q)))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-    const act = db.productos.filter((p) => p.activo && rules.hasCost(p.costo) && p.precio > 0);
-    const avg = act.length ? act.reduce((a, p) => a + (p.precio - p.costo) / p.precio, 0) / act.length : NaN;
+      .filter((p) => (ui.prodVer === "todos" || (ui.prodVer === "activos" ? p.activo : !p.activo)) && (!cat || p.categoria === cat) && (!mar || p.marca === mar)
+        && (!q || PPX.cat.norm(p.nombre).includes(q) || String(p.codigo || "").includes(q) || String(p.ref || "") === q))
+      .sort((a, b) => (Number(a.ref) || 1e12) - (Number(b.ref) || 1e12) || a.nombre.localeCompare(b.nombre, "es"));
+    const lim = ui.prodLimit || 60;
+    const C = window.PPX_CATALOGO_INICIAL;
+    const cats = distinct("categoria"), marcas = distinct("marca");
+    const sinCosto = db.productos.filter((p) => p.activo && !rules.hasCost(p.costo)).length;
     return `
     <div class="page-head">
-      <div class="lead"><span class="eyebrow">Catálogo</span><h1>Productos</h1><p>Lo que cuesta hacer cada producto y a cuánto se vende al público. Margen promedio: <b>${fmt.pct(avg)}</b>.</p></div>
-      ${isAdmin() ? `<button class="btn primary" data-act="prod-new">${ICON.plus} Nuevo producto</button>` : ""}
+      <div class="lead"><span class="eyebrow">Catálogo</span><h1>Productos</h1><p>Código, categoría, marca, IVA, costo y precio de cada producto. Lo que se crea o edita aquí queda disponible en inventario y ventas.</p></div>
+      ${isAdmin() ? `<div class="actions"><label class="btn" for="imp-file">${ICON.informes} Importar Excel</label><input id="imp-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden><button class="btn primary" data-act="prod-new">${ICON.plus} Nuevo producto</button></div>` : ""}
     </div>
+    ${!db.productos.length && C && isAdmin() ? `<section class="card welcome"><div><span class="eyebrow">Catálogo de EduPan</span><h2 style="margin-top:4px">Cargar los ${C.productos.length} productos de la empresa</h2></div>
+      <p class="muted">Del Excel «${esc(C.fuente)}»: ID, código de barras, categoría, marca, IVA, precios y el stock de ese día. Antes de cargar eliges a qué local pertenece ese stock. Después puedes editar cualquier dato o importar un Excel más nuevo.</p>
+      <div><button class="btn primary" data-f="cat-inicial">Cargar productos</button></div></section>` : ""}
+    <section class="minis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <div class="mini"><span>Productos activos</span><b class="num">${fmt.int(db.productos.filter((p) => p.activo).length)}</b></div>
+      <div class="mini"><span>Categorías</span><b class="num">${cats.length}</b></div>
+      <div class="mini"><span>Marcas</span><b class="num">${marcas.length}</b></div>
+      <div class="mini"><span>Sin costo registrado</span><b class="num" style="color:${sinCosto ? "var(--warn)" : "inherit"}">${fmt.int(sinCosto)}</b></div>
+    </section>
     <div class="toolbar">
-      <label class="search">${ICON.search}<input class="input" id="prod-q" type="search" placeholder="Buscar producto" value="${esc(ui.prodQuery)}" aria-label="Buscar producto"></label>
-      <div class="segmented" role="group" aria-label="Mostrar">${[["activos", "Activos"], ["inactivos", "Desactivados"], ["todos", "Todos"]].map(([k, x]) => `<button class="seg" aria-pressed="${ui.prodVer === k}" data-prodver="${k}">${x}</button>`).join("")}</div>
+      <label class="search">${ICON.search}<input class="input" id="prod-q" type="search" placeholder="Buscar por nombre, código o ID" value="${esc(ui.prodQuery)}" aria-label="Buscar producto"></label>
+      <div class="filters">
+        <div class="select-wrap"><select class="input" data-pf="prodCat" aria-label="Categoría"><option value="">Todas las categorías</option>${cats.map((c) => `<option ${cat === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
+        <div class="select-wrap"><select class="input" data-pf="prodMarca" aria-label="Marca"><option value="">Todas las marcas</option>${marcas.map((c) => `<option ${mar === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
+        <div class="segmented" role="group" aria-label="Mostrar">${[["activos", "Activos"], ["inactivos", "Desactivados"], ["todos", "Todos"]].map(([k, x]) => `<button class="seg" aria-pressed="${ui.prodVer === k}" data-prodver="${k}">${x}</button>`).join("")}</div>
+      </div>
     </div>
-    ${list.length ? `<div class="prod-grid">${list.map(prodCard).join("")}</div>` : `<div class="card empty">${db.productos.length ? "Ningún producto coincide con la búsqueda." : "Todavía no hay productos. Crea el primero con «Nuevo producto»."}</div>`}`;
+    <section class="card">
+      <div class="card-head"><div><h2>${fmt.int(list.length)} producto${list.length === 1 ? "" : "s"}</h2><p class="muted small">Toca un producto para ${isAdmin() ? "editarlo" : "ver su detalle"}. El precio al público incluye IVA.</p></div></div>
+      ${list.length ? `<div class="table-wrap"><table class="prod-table">
+        <thead><tr><th>ID</th><th>Código de barras</th><th>Producto</th><th class="hide-sm">Categoría</th><th class="hide-sm">Marca</th><th class="r">IVA</th><th class="r">Costo</th><th class="r">Precio</th><th class="r">Stock</th></tr></thead>
+        <tbody>${list.slice(0, lim).map((p) => { const st = stockTotal(p), has = rules.hasCost(p.costo); return `<tr class="click ${p.activo ? "" : "off"}" tabindex="0" data-act="prod-edit" data-id="${p.id}">
+          <td class="num muted">${p.ref ?? "—"}</td><td class="num">${esc(p.codigo || "—")}</td>
+          <td><b>${esc(p.nombre)}</b><br><span class="muted small">${esc(p.unidad || "UND")}${p.activo ? "" : " · desactivado"}</span></td>
+          <td class="hide-sm">${esc(p.categoria || "—")}</td><td class="hide-sm">${esc(p.marca || "—")}</td><td class="r num">${p.iva ?? 15} %</td>
+          <td class="r num">${has ? fmt.money(p.costo) : '<span class="muted">—</span>'}</td><td class="r num"><b>${fmt.money(p.precio)}</b>${has && p.precio > 0 ? `<br><span class="small" style="color:${p.precio - p.costo < 0 ? "var(--bad)" : "var(--good)"}">gana ${fmt.money(p.precio - p.costo)}</span>` : ""}</td>
+          <td class="r num">${st === null ? '<span class="muted">—</span>' : `<span class="stock ${rules.stockState(st, p.stockMin)}">${fmt.int(st)}</span>`}</td></tr>`; }).join("")}</tbody></table></div>
+        ${list.length > lim ? `<div style="text-align:center;margin-top:12px"><button class="btn ghost" data-f="prod-more">Ver ${Math.min(60, list.length - lim)} más</button></div>` : ""}`
+        : `<div class="empty">${db.productos.length ? "Ningún producto coincide con la búsqueda." : "Todavía no hay productos."}</div>`}
+    </section>`;
   }
-  function prodCard(p) {
-    const has = rules.hasCost(p.costo);
-    const m = has ? round2(p.precio - p.costo) : null, mp = has && p.precio > 0 ? m / p.precio : NaN;
-    return `<article class="prod ${p.activo ? "" : "off"}">
-      <div class="prod-top"><div><div class="prod-name">${esc(p.nombre)}</div><div class="muted small">por ${esc(p.unidad || "unidad")}${p.stockMin ? ` · mínimo ${fmt.int(p.stockMin)}` : ""}${p.ejemplo ? " · ejemplo" : ""}${p.activo ? "" : " · desactivado"}</div></div>
-        <span class="pill ${has ? (m < 0 ? "bad" : marginClass(mp)) : "neutral"}">${has ? (m < 0 ? "Pérdida" : fmt.pct(mp)) : "Sin costo"}</span></div>
-      <div class="prod-price"><span class="big num">${fmt.money(p.precio)}</span><span class="muted small">precio al público</span></div>
-      <div class="pc"><div><span>Costo</span><b>${has ? fmt.money(p.costo) : "—"}</b></div><div><span>Ganas</span><b style="color:${m !== null && m < 0 ? "var(--bad)" : "var(--good)"}">${has ? fmt.money(m) : "—"}</b></div></div>
-      ${has && p.precio > 0 ? `<div><div class="split" role="img" aria-label="Costo ${fmt.pct(p.costo / p.precio)} y margen ${fmt.pct(mp)} del precio"><i class="c" style="width:${Math.min(100, (p.costo / p.precio) * 100)}%"></i><i class="m" style="width:${Math.max(0, mp * 100)}%"></i></div><div class="split-legend"><span>Costo ${fmt.pct(p.costo / p.precio)}</span><span>Margen ${fmt.pct(mp)}</span></div></div>` : ""}
-      ${isAdmin() ? `<div class="prod-actions"><button class="btn" data-act="prod-edit" data-id="${p.id}">Editar</button><button class="btn ghost" data-act="prod-toggle" data-id="${p.id}">${p.activo ? "Desactivar" : "Activar"}</button></div>` : ""}
-    </article>`;
-  }
+  function prodCard() { return ""; }
+
+  /** Crear o editar un producto: todo editable, y categoría, marca y unidad aceptan valores nuevos. */
   function openProdDialog(id) {
-    const p = id ? producto(id) : { nombre: "", precio: "", costo: "", unidad: "unidad", stockMin: "" };
+    const ro = !isAdmin();
+    const p0 = id ? producto(id) : null;
+    const p = p0 || { nombre: "", ref: PPX.cat.nextRef(db), codigo: "", categoria: "", marca: "", unidad: "UND", iva: 15, precio: "", costo: "", stockMin: "" };
     const show = (v) => (v === "" || v === null || v === undefined ? "" : String(v).replace(".", ","));
+    const unidades = [...new Set(["UND", "unidad", "porción", "docena", "funda", "libra", "kg", "litro"].concat(distinct("unidad")))];
+    const st = p0 ? stockTotal(p0) : null;
     const ov = document.createElement("div"); ov.className = "overlay";
-    ov.innerHTML = `<form class="dialog" id="prod-form" novalidate role="dialog" aria-modal="true" aria-labelledby="pd-t">
-      <div class="card-head" style="margin:0"><h2 id="pd-t">${id ? "Editar producto" : "Nuevo producto"}</h2><button type="button" class="icon-btn" data-close aria-label="Cerrar">${ICON.x}</button></div>
-      <div class="field"><label for="pd-nombre">Nombre</label><input class="input" id="pd-nombre" value="${esc(p.nombre)}" placeholder="Ej.: Pan de yuca" maxlength="80" required></div>
+    ov.innerHTML = `<form class="dialog wide" id="prod-form" novalidate role="dialog" aria-modal="true" aria-labelledby="pd-t">
+      <div class="card-head" style="margin:0"><h2 id="pd-t">${ro ? esc(p.nombre) : id ? "Editar producto" : "Nuevo producto"}</h2><button type="button" class="icon-btn" data-close aria-label="Cerrar">${ICON.x}</button></div>
+      <div class="field"><label for="pd-nombre">Nombre</label><input class="input" id="pd-nombre" value="${esc(p.nombre)}" placeholder="Ej.: PAN DE YUCA" maxlength="80" required></div>
       <div class="grid2">
-        <div class="field"><label for="pd-precio">Precio al público</label><input class="input num" id="pd-precio" inputmode="decimal" value="${show(p.precio)}" placeholder="0,25" required></div>
-        <div class="field"><label for="pd-costo">Costo de hacerlo</label><input class="input num" id="pd-costo" inputmode="decimal" value="${show(p.costo)}" placeholder="0,11"><span class="hint">Opcional. Sin costo no hay margen.</span></div>
+        <div class="field"><label for="pd-ref">ID del producto</label><input class="input num" id="pd-ref" inputmode="numeric" value="${esc(p.ref ?? "")}"><span class="hint">Número único. Se propone el siguiente libre.</span></div>
+        <div class="field"><label for="pd-cod">Código de barras</label><div class="inline-btn"><input class="input num" id="pd-cod" value="${esc(p.codigo || "")}" placeholder="Escanéalo o escríbelo" maxlength="30">${ro ? "" : `<button type="button" class="btn" id="pd-gen">Generar</button>`}</div></div>
+      </div>
+      <div class="grid3">
+        <div class="field"><label for="pd-cat">Categoría</label><input class="input" id="pd-cat" list="pd-cats" value="${esc(p.categoria || "")}" placeholder="Elige o escribe una nueva" maxlength="60"><datalist id="pd-cats">${distinct("categoria").map((x) => `<option value="${esc(x)}">`).join("")}</datalist></div>
+        <div class="field"><label for="pd-marca">Marca</label><input class="input" id="pd-marca" list="pd-marcas" value="${esc(p.marca || "")}" placeholder="Elige o escribe una nueva" maxlength="60"><datalist id="pd-marcas">${distinct("marca").map((x) => `<option value="${esc(x)}">`).join("")}</datalist></div>
+        <div class="field"><label for="pd-unidad">Unidad</label><input class="input" id="pd-unidad" list="pd-unidades" value="${esc(p.unidad || "UND")}" maxlength="20"><datalist id="pd-unidades">${unidades.map((x) => `<option value="${esc(x)}">`).join("")}</datalist></div>
+      </div>
+      <div class="grid3">
+        <div class="field"><label for="pd-iva">IVA</label><select class="input" id="pd-iva">${[15, 5, 0].concat([15, 5, 0].includes(Number(p.iva)) ? [] : [Number(p.iva)]).map((x) => `<option value="${x}" ${Number(p.iva ?? 15) === x ? "selected" : ""}>${x} %</option>`).join("")}</select></div>
+        <div class="field"><label for="pd-precio">Precio al público (con IVA)</label><input class="input num" id="pd-precio" inputmode="decimal" value="${show(p.precio)}" placeholder="0,25"></div>
+        <div class="field"><label for="pd-costo">Costo</label><input class="input num" id="pd-costo" inputmode="decimal" value="${show(p.costo)}" placeholder="Opcional"><span class="hint">Sin costo no hay margen.</span></div>
       </div>
       <div class="grid2">
-        <div class="field"><label for="pd-unidad">Se vende por</label><select class="input" id="pd-unidad">${["unidad", "porción", "docena", "funda", "libra", "kg"].map((u) => `<option ${p.unidad === u ? "selected" : ""}>${u}</option>`).join("")}</select></div>
-        <div class="field"><label for="pd-min">Stock mínimo</label><input class="input num" id="pd-min" inputmode="decimal" value="${show(p.stockMin)}" placeholder="Ej.: 40"><span class="hint">Opcional. Avisa cuando un local tenga menos.</span></div>
+        <div class="field"><label for="pd-min">Stock mínimo</label><input class="input num" id="pd-min" inputmode="decimal" value="${show(p.stockMin)}" placeholder="Opcional"><span class="hint">Avisa cuando un local tenga menos.</span></div>
+        ${id ? `<div class="field"><span class="lbl">Stock actual</span><div class="stock-now">${db.locales.map((l) => { const s = rules.stockAt(db, l.id, p0.id); return `<span>${esc(l.nombre)}: <b class="num">${s.tracked ? fmt.int(s.qty) : "—"}</b></span>`; }).join("")}</div><span class="hint">Se cambia con entradas, ventas, pérdidas o un conteo físico en Inventario.</span></div>`
+          : `<div class="field"><label for="pd-stock">Stock inicial (opcional)</label><div class="inline-btn"><input class="input num" id="pd-stock" inputmode="decimal" placeholder="0">${localSelect("pd-stockloc", "matriz")}</div><span class="hint">Se registra como conteo físico de hoy en ese local.</span></div>`}
       </div>
       <div id="pd-prev" class="note info" aria-live="polite"></div>
       <div id="pd-err" class="errors"></div>
-      ${id ? `<p class="muted small">Cambiar el precio o el costo no altera los reportes ya registrados: cada reporte guarda los valores de su momento.</p>` : ""}
-      <div class="actions"><button type="button" class="btn" data-close>Cancelar</button><button class="btn primary" type="submit">${id ? "Guardar cambios" : "Crear producto"}</button></div>
+      <div class="actions">${id && !ro ? `<button type="button" class="btn ghost-danger" data-ptoggle style="margin-right:auto">${p0.activo ? "Desactivar" : "Activar"}</button>` : ""}<button type="button" class="btn" data-close>${ro ? "Cerrar" : "Cancelar"}</button>${ro ? "" : `<button class="btn primary" type="submit">${id ? "Guardar cambios" : "Crear producto"}</button>`}</div>
     </form>`;
     document.body.appendChild(ov);
+    if (ro) ov.querySelectorAll("input,select").forEach((x) => { x.disabled = true; });
+    void st;
     const upd = () => {
-      const pr = parseNum($("#pd-precio").value), co = parseNum($("#pd-costo").value), box = $("#pd-prev");
-      if (isNaN(pr)) { box.className = "note info"; box.textContent = "Escribe el precio para ver cuánto ganas por unidad."; return; }
-      if (isNaN(co)) { box.className = "note info"; box.textContent = `Se vende a ${fmt.money(pr)}. Agrega el costo para ver el margen.`; return; }
-      const m = round2(pr - co);
-      box.className = "note " + (m < 0 ? "bad" : m / pr >= 0.4 ? "good" : "");
-      box.innerHTML = m < 0 ? `<b>Se vende a pérdida:</b> cuesta ${fmt.money(co)} y se vende a ${fmt.money(pr)}.` : `Ganas <b>${fmt.money(m)}</b> por ${esc($("#pd-unidad").value)}: <b>${fmt.pct(pr ? m / pr : NaN)}</b> del precio.`;
+      const pr = parseNum($("#pd-precio").value), co = parseNum($("#pd-costo").value), iva = Number($("#pd-iva").value), box = $("#pd-prev");
+      if (isNaN(pr)) { box.className = "note info"; box.textContent = "Escribe el precio al público para ver el precio sin IVA y el margen."; return; }
+      const sin = pr / (1 + iva / 100);
+      let h = `Sin IVA: <b>${fmt.money(sin)}</b> (IVA ${fmt.money(pr - sin)}).`;
+      if (!isNaN(co)) { const m = round2(pr - co); h += m < 0 ? ` <b style="color:var(--bad)">Se vende a pérdida.</b>` : ` Ganas <b>${fmt.money(m)}</b> por unidad: <b>${fmt.pct(pr ? m / pr : NaN)}</b> del precio.`; }
+      box.className = "note " + (!isNaN(co) && pr - co < 0 ? "bad" : "info"); box.innerHTML = h;
     };
-    ["#pd-precio", "#pd-costo", "#pd-unidad"].forEach((s) => $(s, ov).addEventListener("input", upd));
+    ["#pd-precio", "#pd-costo", "#pd-iva"].forEach((s) => $(s, ov).addEventListener("input", upd)); $("#pd-iva", ov).addEventListener("change", upd);
     upd();
     const close = () => ov.remove();
-    ov.addEventListener("click", (e) => { if (e.target === ov || e.target.closest("[data-close]")) close(); });
+    ov.addEventListener("click", (e) => {
+      if (e.target === ov || e.target.closest("[data-close]")) close();
+      if (e.target.closest("#pd-gen")) $("#pd-cod").value = PPX.cat.newCode(db);
+      if (e.target.closest("[data-ptoggle]")) { p0.activo = !p0.activo; audit(p0.activo ? "Producto activado" : "Producto desactivado", p0.nombre); save(); close(); render(); toast(p0.activo ? "Producto activado" : "Producto desactivado"); }
+    });
     $("#prod-form").addEventListener("submit", (e) => {
-      e.preventDefault();
-      const nombre = $("#pd-nombre").value.trim().replace(/\s+/g, " "), precio = parseNum($("#pd-precio").value);
-      const costoRaw = $("#pd-costo").value.trim(), costo = costoRaw === "" ? null : parseNum(costoRaw), unidad = $("#pd-unidad").value;
-      const minRaw = $("#pd-min").value.trim(), stockMin = minRaw === "" ? null : parseNum(minRaw);
-      const errs = [];
+      e.preventDefault(); if (ro) return;
+      const v = (s) => $(s).value.trim().replace(/\s+/g, " ");
+      const nombre = v("#pd-nombre"), refRaw = v("#pd-ref"), ref = refRaw === "" ? null : Number(refRaw), codigo = v("#pd-cod"), precio = parseNum(v("#pd-precio"));
+      const costoRaw = v("#pd-costo"), costo = costoRaw === "" ? null : parseNum(costoRaw), minRaw = v("#pd-min"), stockMin = minRaw === "" ? null : parseNum(minRaw);
+      const iva = Number($("#pd-iva").value), stRaw = id ? "" : v("#pd-stock"), stock0 = stRaw === "" ? null : parseNum(stRaw);
+      const errs = [], others = db.productos.filter((x) => x.id !== id);
       if (!nombre) errs.push("Escribe el nombre del producto.");
-      if (db.productos.some((x) => x.id !== id && x.nombre.toLowerCase() === nombre.toLowerCase())) errs.push("Ya existe un producto con ese nombre.");
+      if (others.some((x) => PPX.cat.norm(x.nombre) === PPX.cat.norm(nombre))) errs.push("Ya existe un producto con ese nombre.");
+      if (ref !== null && (!Number.isInteger(ref) || ref <= 0)) errs.push("El ID debe ser un número entero mayor a 0.");
+      if (ref !== null && others.some((x) => Number(x.ref) === ref)) errs.push(`El ID ${ref} ya lo usa otro producto.`);
+      if (codigo && others.some((x) => String(x.codigo) === codigo)) errs.push(`El código ${codigo} ya lo usa «${others.find((x) => String(x.codigo) === codigo).nombre}».`);
       if (isNaN(precio) || precio < 0) errs.push("El precio debe ser un número igual o mayor a 0 (usa coma o punto para los centavos).");
       if (costo !== null && (isNaN(costo) || costo < 0)) errs.push("El costo debe ser un número igual o mayor a 0, o déjalo vacío.");
       if (stockMin !== null && (isNaN(stockMin) || stockMin < 0)) errs.push("El stock mínimo debe ser un número igual o mayor a 0, o déjalo vacío.");
-      if (errs.length) { $("#pd-err").innerHTML = errs.map((x) => `<div class="note bad">${esc(x)}</div>`).join(""); return; }
+      if (stock0 !== null && (isNaN(stock0) || stock0 < 0)) errs.push("El stock inicial debe ser un número igual o mayor a 0.");
+      if (errs.length) { $("#pd-err").innerHTML = errBox(errs); return; }
+      const data = { nombre, ref, codigo, categoria: v("#pd-cat") || "Sin categoría", marca: v("#pd-marca"), unidad: v("#pd-unidad") || "UND", iva, precio: round2(precio), precioSinIva: Math.round((precio / (1 + iva / 100)) * 10000) / 10000, costo: costo === null ? null : round2(costo), stockMin, ejemplo: false };
       if (id) {
-        const before = { precio: p.precio, costo: p.costo };
-        Object.assign(p, { nombre, precio: round2(precio), costo: costo === null ? null : round2(costo), unidad, stockMin, ejemplo: false });
-        audit("Producto editado", `${nombre}: precio ${fmt.money(before.precio)} → ${fmt.money(p.precio)}, costo ${rules.hasCost(before.costo) ? fmt.money(before.costo) : "—"} → ${rules.hasCost(p.costo) ? fmt.money(p.costo) : "—"}`);
+        const before = { precio: p0.precio, costo: p0.costo };
+        Object.assign(p0, data);
+        audit("Producto editado", `${nombre} (ID ${ref ?? "—"}): precio ${fmt.money(before.precio)} → ${fmt.money(p0.precio)}, costo ${rules.hasCost(before.costo) ? fmt.money(before.costo) : "—"} → ${rules.hasCost(p0.costo) ? fmt.money(p0.costo) : "—"}`);
       } else {
-        db.productos.push({ id: uid(), nombre, precio: round2(precio), costo: costo === null ? null : round2(costo), unidad, stockMin, activo: true });
-        audit("Producto creado", `${nombre} a ${fmt.money(precio)}`);
+        const np = { id: uid(), activo: true, ...data }; db.productos.push(np);
+        if (stock0 !== null) { const loc = $("#pd-stockloc").value; db.reportes.push({ id: uid(), tipo: "INVENTARIO", localId: loc, desde: today(), hasta: today(), estado: "CONFIRMADO", obs: `Stock inicial de ${nombre}`, lineas: [{ productoId: np.id, cantidad: stock0, costo: np.costo }], creado: util.now() }); }
+        audit("Producto creado", `${nombre} (ID ${ref ?? "—"}, código ${codigo || "—"}) a ${fmt.money(precio)}${stock0 !== null ? ` · stock inicial ${fmt.int(stock0)}` : ""}`);
       }
       save(); close(); render(); toast(id ? "Producto guardado" : "Producto creado");
     });
-    $("#pd-nombre", ov).focus();
+    if (!ro) $("#pd-nombre", ov).focus();
+  }
+
+  /** Importar el Excel de productos del sistema de la empresa. */
+  async function openImportDialog(file) {
+    let rows;
+    try { rows = PPX.cat.rowsFromSheet(await PPX.excel.read(await file.arrayBuffer())); }
+    catch (x) { return toast("No se pudo leer el Excel: " + x.message); }
+    showImport(rows, file.name);
+  }
+  function showImport(rows, archivo) {
+    // Vista previa: cuántos son nuevos y cuántos ya existen
+    const copia = JSON.parse(JSON.stringify(db.productos)), prueba = { productos: copia, reportes: [] };
+    const pre = PPX.cat.importRows(prueba, rows, null);
+    const conStock = rows.filter((r) => r[8] != null).length, cats = new Set(rows.map((r) => r[7])).size;
+    const { ov, close } = dialog(`<form class="dialog wide" id="imp-form" novalidate role="dialog" aria-modal="true" aria-labelledby="im-t">
+      ${dlgHead("im-t", "Importar productos")}
+      <p class="muted small">Archivo: <b>${esc(archivo)}</b> · ${rows.length} productos · ${cats} categorías</p>
+      <div class="caja-sum num"><div><span>Nuevos</span><b>${pre.nuevos}</b></div><div><span>Se actualizan</span><b>${pre.actualizados}</b></div><div><span>Sin cambios</span><b>${pre.iguales}</b></div></div>
+      <div class="table-wrap" style="max-height:220px"><table><thead><tr><th>ID</th><th>Código</th><th>Producto</th><th>Categoría</th><th class="r">Precio</th><th class="r">Stock</th></tr></thead>
+        <tbody>${rows.slice(0, 8).map((r) => `<tr><td class="num">${r[0] ?? "—"}</td><td class="num">${esc(r[3])}</td><td>${esc(r[2])}</td><td>${esc(r[7])}</td><td class="r num">${fmt.money(r[11] ?? 0)}</td><td class="r num">${r[8] ?? "—"}</td></tr>`).join("")}</tbody></table></div>
+      ${rows.length > 8 ? `<p class="muted small">… y ${rows.length - 8} más.</p>` : ""}
+      ${conStock ? `<label class="check-line"><input type="checkbox" id="im-stock" checked><span>Cargar el stock del archivo en un local</span></label>
+        <div id="im-stock-f" style="display:grid;gap:10px">
+          ${rows.sucursal ? `<div class="note">El Excel dice <b>«Sucursal: ${esc(rows.sucursal)}»</b>${rows.generado ? ` · generado el ${esc(rows.generado)}` : ""}. Elige a qué local corresponde ese stock.</div>` : ""}
+          <div class="grid2"><div class="field"><label for="im-local">¿De qué local es este stock?</label><select class="input" id="im-local"><option value="">Elige el local…</option>${db.locales.map((l) => `<option value="${l.id}">${esc(l.nombre)}</option>`).join("")}</select></div>
+            <div class="field"><label for="im-fecha">Fecha del conteo</label><input class="input" type="date" id="im-fecha" value="${rows.generado && /^\d{4}-\d{2}-\d{2}/.test(rows.generado) && rows.generado.slice(0, 10) <= today() ? rows.generado.slice(0, 10) : today()}" max="${today()}"></div></div>
+          <p class="muted small">Los productos (nombres, códigos, precios) son los mismos para los 3 locales. Solo el <b>stock</b> se carga en el local que elijas; los otros dos no se tocan.</p>
+        </div>` : ""}
+      <div id="im-err" class="errors"></div>
+      <p class="muted small">Los productos se reconocen por su ID (o código de barras). Si el archivo trae costo 0, se conserva el costo que ya tengas escrito.</p>
+      <div class="actions"><button type="button" class="btn" data-close>Cancelar</button><button class="btn primary" type="submit" id="im-go">Importar ${rows.length} productos</button></div>
+    </form>`);
+    const f = $("#imp-form", ov);
+    const label = () => { const on = $("#im-stock", f)?.checked, l = $("#im-local", f)?.value; $("#im-go", f).textContent = on ? (l ? `Importar y cargar stock en ${local(l).nombre}` : "Elige el local del stock") : `Importar ${rows.length} productos sin stock`; };
+    $("#im-stock", f)?.addEventListener("change", (e) => { $("#im-stock-f", f).hidden = !e.target.checked; label(); });
+    $("#im-local", f)?.addEventListener("change", label);
+    if (conStock) label();
+    f.addEventListener("submit", (e) => {
+      e.preventDefault(); if (!isAdmin()) return;
+      const withStock = $("#im-stock", f)?.checked;
+      if (withStock && !$("#im-local", f).value) { $("#im-err", f).innerHTML = errBox(["Elige a qué local pertenece el stock de este Excel, o desmarca «Cargar el stock» para importar solo los productos."]); $("#im-local", f).focus(); return; }
+      const res = PPX.cat.importRows(db, rows, withStock ? { localId: $("#im-local", f).value, fecha: $("#im-fecha", f).value || today(), archivo } : null);
+      audit("Productos importados", `${archivo}: ${res.nuevos} nuevos, ${res.actualizados} actualizados${res.conteo ? ` · stock de ${res.lineas} productos en ${local(res.conteo.localId).nombre}` : ""}`);
+      ui.prodLimit = 60; save(); close(); render(); toast(`Listo: ${res.nuevos} nuevos y ${res.actualizados} actualizados`);
+    });
   }
 
   /* ---------- Reportes ---------- */
@@ -932,7 +1030,7 @@
     const one = shown.length === 1;
     const mes = monthRange();
     const sums = one ? rules.movementSums(db, shown[0].id, mes) : null;
-    let valor = 0, bajo = 0, agotado = 0, neg = 0;
+    let valor = 0, valorPvp = 0, bajo = 0, agotado = 0, neg = 0;
     const rows = stockTable(shown)
       .filter((r) => r.p.activo || r.per.some((x) => x.tracked && x.qty))
       .sort((a, b) => a.p.nombre.localeCompare(b.p.nombre, "es"))
@@ -941,12 +1039,17 @@
         for (const x of r.per) {
           if (x.st === "bajo") bajo++; if (x.st === "agotado") agotado++; if (x.st === "negativo") neg++;
           if (x.qty > 0 && rules.hasCost(r.p.costo)) r.v += x.qty * r.p.costo;
+          if (x.qty > 0) valorPvp += x.qty * (Number(r.p.precio) || 0);
         }
         valor += r.v;
         r.worst = r.per.reduce((w, x) => (RANK[x.st] > RANK[w] ? x.st : w), "sin");
         return r;
       })
       .filter((r) => ui.invEstado === "todos" || ["bajo", "agotado", "negativo"].includes(r.worst));
+    const iq = PPX.cat.norm(ui.invQ || ""), icat = ui.invCat || "";
+    const totalRows = rows.length;
+    const rowsF = rows.filter((r) => (!icat || r.p.categoria === icat) && (!iq || PPX.cat.norm(r.p.nombre).includes(iq) || String(r.p.codigo || "").includes(iq) || String(r.p.ref || "") === iq));
+    const invLim = ui.invLimit || 60;
     const entradasMes = db.reportes.filter((r) => r.tipo === "ENTRADA" && r.estado === "CONFIRMADO" && r.hasta >= mes[0] && shown.some((l) => l.id === r.localId)).reduce((a, r) => a + rules.movTotals(r).valor, 0);
     const movs = db.reportes
       .filter((r) => (ui.invMov === "todos" ? ["ENTRADA", "PERDIDA", "INVENTARIO"].includes(r.tipo) : r.tipo === ui.invMov) && (ui.invLocal === "todos" || r.localId === ui.invLocal))
@@ -963,8 +1066,12 @@
       <div class="segmented" role="group" aria-label="Local">${[["todos", "Los 3 locales"], ...locs.map((l) => [l.id, l.nombre])].map(([k, x]) => `<button class="seg" aria-pressed="${ui.invLocal === k}" data-invlocal="${k}">${esc(x)}</button>`).join("")}</div>
       <div class="segmented" role="group" aria-label="Mostrar">${[["todos", "Todos los productos"], ["alerta", "Solo alertas"]].map(([k, x]) => `<button class="seg" aria-pressed="${ui.invEstado === k}" data-investado="${k}">${x}</button>`).join("")}</div>
     </div>
+    <div class="toolbar">
+      <label class="search">${ICON.search}<input class="input" id="inv-q" type="search" placeholder="Buscar por nombre, código o ID" value="${esc(ui.invQ || "")}" aria-label="Buscar en inventario"></label>
+      <div class="select-wrap"><select class="input" data-pf="invCat" aria-label="Categoría"><option value="">Todas las categorías</option>${distinct("categoria").map((c) => `<option ${icat === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
+    </div>
     <section class="kpis" aria-label="Resumen de inventario">
-      <div class="kpi hero"><span class="eyebrow">Valor del inventario</span><span class="val num" data-count="${round2(valor)}" data-fmt="money">${fmt.money(valor)}</span><span class="sub">Existencias × costo de cada producto</span></div>
+      <div class="kpi hero"><span class="eyebrow">Valor del inventario</span><span class="val num" data-count="${round2(valor)}" data-fmt="money">${fmt.money(valor)}</span><span class="sub">A costo · a precio de venta: <b>${fmt.money(valorPvp)}</b>${db.productos.some((p) => p.activo && !rules.hasCost(p.costo)) ? " · hay productos sin costo" : ""}</span></div>
       <div class="kpi"><span class="eyebrow">Bajo el mínimo</span><span class="val num" style="color:var(--warn)" data-count="${bajo}" data-fmt="int">${bajo}</span><span class="sub">Productos por reponer</span></div>
       <div class="kpi"><span class="eyebrow">Agotados</span><span class="val num" style="color:var(--bad)" data-count="${agotado + neg}" data-fmt="int">${agotado + neg}</span><span class="sub">${neg ? `${neg} con más salidas que entradas` : "Existencia en cero"}</span></div>
       <div class="kpi"><span class="eyebrow">Entradas del mes</span><span class="val num" data-count="${round2(entradasMes)}" data-fmt="money">${fmt.money(entradasMes)}</span><span class="sub">Producción y compras, a costo</span></div>
@@ -973,14 +1080,14 @@
     <section class="card" aria-label="Existencias">
       <div class="card-head"><div><h2>Existencias actuales</h2><p class="muted small">${one ? `${esc(shown[0].nombre)} · movimiento de este mes por producto` : "Cada local por separado: los datos no se mezclan"}</p></div>
         <div class="legend"><span><i style="background:var(--good)"></i>Bien</span><span><i style="background:var(--warn)"></i>Bajo mínimo</span><span><i style="background:var(--bad)"></i>Agotado</span></div></div>
-      ${rows.length ? `<div class="table-wrap"><table>
+      ${rowsF.length ? `<div class="table-wrap"><table>
         <thead><tr><th>Producto</th>${one ? `<th class="r">Existencia</th><th class="r hide-sm">Entradas mes</th><th class="r hide-sm">Ventas mes</th><th class="r hide-sm">Pérdidas mes</th><th class="r hide-sm">Mínimo</th>` : shown.map((l) => `<th class="r">${esc(l.nombre)}</th>`).join("")}<th class="r">Valor</th><th>Estado</th></tr></thead>
-        <tbody>${rows.map((r) => { const m = sums && (sums.get(r.p.id) || { entradas: 0, ventas: 0, perdidas: 0 }); return `<tr><td style="white-space:nowrap"><b>${esc(r.p.nombre)}</b>${!one && r.p.stockMin ? `<br><span class="muted small">mínimo ${fmt.int(r.p.stockMin)}</span>` : ""}</td>
+        <tbody>${rowsF.slice(0, invLim).map((r) => { const m = sums && (sums.get(r.p.id) || { entradas: 0, ventas: 0, perdidas: 0 }); return `<tr><td style="white-space:nowrap"><b>${esc(r.p.nombre)}</b>${!one && r.p.stockMin ? `<br><span class="muted small">mínimo ${fmt.int(r.p.stockMin)}</span>` : ""}</td>
           ${one ? `<td class="r num"><span class="stock ${r.per[0].st}">${r.per[0].tracked ? fmt.int(r.per[0].qty) : "—"}</span></td>
               <td class="r num hide-sm" style="color:var(--good)">${m.entradas ? "+" + fmt.int(m.entradas) : "—"}</td><td class="r num hide-sm">${m.ventas ? "−" + fmt.int(m.ventas) : "—"}</td><td class="r num hide-sm" style="color:var(--bad)">${m.perdidas ? "−" + fmt.int(m.perdidas) : "—"}</td><td class="r num hide-sm">${r.p.stockMin ? fmt.int(r.p.stockMin) : "—"}</td>`
             : r.per.map((x) => `<td class="r num"><span class="stock ${x.st}">${x.tracked ? fmt.int(x.qty) : "—"}</span></td>`).join("")}
-          <td class="r num">${r.v ? fmt.money(r.v) : "—"}</td><td>${STATE[r.worst]}</td></tr>`; }).join("")}</tbody></table></div>`
-        : `<div class="empty">${ui.invEstado === "alerta" ? "Ningún producto con alertas." : "Todavía no hay movimientos."}</div>`}
+          <td class="r num">${r.v ? fmt.money(r.v) : "—"}</td><td>${STATE[r.worst]}</td></tr>`; }).join("")}</tbody></table></div>${rowsF.length > invLim ? `<div style="text-align:center;margin-top:12px"><button class="btn ghost" data-f="inv-more">Ver ${Math.min(60, rowsF.length - invLim)} más de ${rowsF.length}</button></div>` : ""}`
+        : `<div class="empty">${totalRows && rowsF.length === 0 ? "Ningún producto coincide con la búsqueda." : ui.invEstado === "alerta" ? "Ningún producto con alertas." : "Todavía no hay movimientos."}</div>`}
       <p class="muted small" style="margin-top:12px">Existencia = entradas − ventas confirmadas − pérdidas. Si registras un conteo físico, la existencia se ajusta a lo contado y la diferencia queda guardada.</p>
     </section>`}
     <section class="card" aria-label="Movimientos">
@@ -1537,7 +1644,7 @@
   /** Segmentos de la dona de categorías: las 7 mayores y el resto junto. */
   const catSegs = (cats) => { const top = cats.slice(0, 7), rest = cats.slice(7).reduce((a, c) => a + c.v, 0); return top.map((c, i) => ({ l: catName(c.id), v: c.v, c: catColor(c.id, i), k: "Egresos" })).concat(rest ? [{ l: `Otras (${cats.length - 7})`, v: round2(rest), c: "var(--surface-3)", k: "Egresos" }] : []); };
   const catColor = (id, i) => (id === "" ? "var(--muted)" : id === "sueldos" ? "#2F8FD8" : CAT_COLS[i % CAT_COLS.length]);
-  const ORIGEN = { caja: ["Reporte diario", "gold"], gasto: ["Gasto", "neutral"], rol: ["Rol de pagos", "good"] };
+  const ORIGEN = { caja: ["Reporte diario", "gold"], gasto: ["Gasto", "neutral"], rol: ["Rol de pagos", "good"], estimado: ["Sueldo estimado (sin rol)", "warn"] };
   const money0 = (v) => (v ? fmt.money(v) : "—");
   const showNum = (v) => (v === "" || v === null || v === undefined ? "" : String(v).replace(".", ","));
   const numOk = (v) => { const n = parseNum(String(v ?? "").trim()); return String(v ?? "").trim() === "" ? 0 : n; };
@@ -1567,10 +1674,11 @@
     const dias = []; for (let d = a; d <= hasta; d = addDays(d, 1)) dias.push(d);
     const tot = { ing: 0, eg: 0 }, porLoc = Object.fromEntries(db.locales.map((l) => [l.id, { ing: 0, eg: 0, n: 0 }]));
     for (const r of cajas) { const e = F.cajaEgresos(r), o = porLoc[r.localId]; o.ing += Number(r.ingresos) || 0; o.eg += e; o.n++; tot.ing += Number(r.ingresos) || 0; tot.eg += e; }
-    const faltan = dias.filter((d) => d < today()).reduce((n, d) => n + db.locales.filter((l) => !map.has(d + "|" + l.id)).length, 0);
+    const faltan = dias.filter((d) => d < today()).reduce((n, d) => n + db.locales.filter((l) => !map.has(d + "|" + l.id) || map.get(d + "|" + l.id).soloPagos).length, 0);
     const sinDet = cajas.reduce((s, r) => s + r.lineas.filter((l) => !l.categoriaId).reduce((x, l) => x + (Number(l.monto) || 0), 0), 0);
     const cell = (d, l) => {
       const r = map.get(d + "|" + l.id);
+      if (r && r.soloPagos) return `<td class="r num day-cell empty-cell" data-f="caja-open" data-id="${r.id}" tabindex="0" title="Falta registrar el día"><span class="add">${isAdmin() ? "+ Registrar" : "Sin reporte"}</span><span class="eg">− ${fmt.money(F.cajaEgresos(r))} pago</span></td>`;
       if (r) { const e = F.cajaEgresos(r); return `<td class="r num day-cell" data-f="caja-open" data-id="${r.id}" tabindex="0" title="Ver o editar"><b>${fmt.money(r.ingresos)}</b><span class="eg">${e ? "− " + fmt.money(e) : "sin egresos"}</span></td>`; }
       return `<td class="r day-cell empty-cell" ${isAdmin() ? `data-f="caja-new" data-loc="${l.id}" data-fecha="${d}" tabindex="0" title="Registrar"` : ""}>${isAdmin() ? '<span class="add">+ Registrar</span>' : "—"}</td>`;
     };
@@ -1604,10 +1712,12 @@
   /** Registrar o editar el reporte de un día: ingresos y egresos, cada uno como un solo total o por categoría. */
   function openCajaDialog(id, preset) {
     if (!isAdmin() && !id) return;
+    // Si ese local ya tiene reporte ese día (por ejemplo, creado al registrar un pago), se abre ese mismo
+    if (!id && preset) { const ex = db.reportes.find((x) => x.tipo === "CAJA" && x.localId === preset.localId && x.hasta === preset.fecha); if (ex) id = ex.id; }
     const ro = !isAdmin();
     const r0 = id ? db.reportes.find((x) => x.id === id) : null;
     const blank = () => ({ categoriaId: "", monto: "", nueva: "" });
-    const fromLines = (ls) => (ls && ls.length ? ls.map((l) => ({ categoriaId: l.categoriaId || "", monto: showNum(l.monto), nueva: "" })) : [blank()]);
+    const fromLines = (ls) => (ls && ls.length ? ls.map((l) => ({ categoriaId: l.categoriaId || "", monto: showNum(l.monto), nueva: "", pagoId: l.pagoId || null, detalle: l.detalle || "" })) : [blank()]);
     const modoOf = (ls) => (ls.length > 1 || ls.some((l) => l.categoriaId) ? "cat" : "total");
     const ing0 = r0 ? fromLines(r0.ingLineas && r0.ingLineas.length ? r0.ingLineas : [{ categoriaId: "", monto: r0.ingresos }]) : [blank()];
     const eg0 = r0 ? fromLines(r0.lineas) : [blank()];
@@ -1636,6 +1746,7 @@
               <select class="input" data-cl="${k}:${i}:categoriaId" aria-label="Categoría" ${ro ? "disabled" : ""}>${opts(k, l.categoriaId)}</select>
               <input class="input num" data-cl="${k}:${i}:monto" inputmode="decimal" placeholder="0,00" value="${esc(l.monto)}" aria-label="Monto" ${ro ? "readonly" : ""}>
               ${ro ? "" : `<button type="button" class="icon-btn" data-cdel="${k}:${i}" aria-label="Quitar línea">${ICON.x}</button>`}
+              ${l.pagoId ? `<span class="hint pago-tag">${ICON.pagos} Pago programado: ${esc(l.detalle || "")}</span>` : ""}
               ${l.categoriaId === "__nueva" ? `<input class="input nueva-cat" data-cl="${k}:${i}:nueva" maxlength="50" placeholder="Nombre de la nueva categoría (${S.ej.toLowerCase()})" value="${esc(l.nueva)}" aria-label="Nueva categoría">` : ""}
             </div>`).join("")}</div>
             ${ro ? "" : `<div><button type="button" class="btn ghost" data-cadd="${k}">${ICON.plus} Agregar ${k === "ing" ? "ingreso" : "egreso"}</button></div>`}
@@ -1702,7 +1813,7 @@
             if (!n) { errs.push(`Escribe el nombre de la nueva categoría de ${k === "ing" ? "ingreso" : "egreso"}.`); continue; }
             nuevas.push({ k, n, l }); cat = "__nueva:" + n;
           }
-          if (m > 0) out.push({ categoriaId: cat, monto: round2(m) });
+          if (m > 0) out.push(Object.assign({ categoriaId: cat, monto: round2(m) }, l.pagoId && st[k].modo === "cat" ? { pagoId: l.pagoId, detalle: l.detalle } : {}));
         }
         return out;
       };
@@ -1999,11 +2110,11 @@
   function viewMas() {
     const it = (k, t, d) => `<a class="mas-item" href="#${k}">${ICON[k] || ICON.reportes}<span><b>${t}</b><span class="muted small">${d}</span></span></a>`;
     return `<div class="page-head"><div class="lead"><span class="eyebrow">Menú</span><h1>Más opciones</h1></div></div>
-      <section class="card mas-list">${it("ajustes", "Ajustes", "Locales, usuarios, respaldo y actividad")}</section>
+      <section class="card mas-list">${it("productos", "Productos", "Catálogo con códigos, categorías y precios")}${it("personal", "Personal", "Trabajadores y roles de pago")}${it("informes", "Informes", "Excel para revisar o enviar al jefe")}${it("ajustes", "Ajustes", "Locales, usuarios, respaldo y actividad")}</section>
       <section class="card mas-list"><div><span class="eyebrow">Propuesta · registro por producto</span><p class="muted small" style="margin-top:4px">Para cuando se quiera llevar cada pan, torta o bebida por separado.</p></div>
-        ${it("prod-panel", "Resumen por producto", "Ventas y ganancia de cada producto")}${it("reportes", "Ventas", "Registrar una venta con sus productos")}${it("inventario", "Inventario", "Existencias, entradas y pérdidas")}${it("productos", "Productos", "Catálogo con precio y costo")}</section>`;
+        ${it("prod-panel", "Resumen por producto", "Ventas y ganancia de cada producto")}${it("reportes", "Ventas", "Registrar una venta con sus productos")}</section>`;
   }
-  const propuestaBanner = () => `<div class="note info propuesta"><b>Propuesta:</b> registro por producto (cada pan, torta o bebida por separado). Hoy el negocio se lleva con los <a href="#diario">reportes diarios</a> de ingresos y egresos; esta sección queda lista por si más adelante se quiere ese detalle. No suma en el Panel principal.</div>`;
+  const propuestaBanner = () => `<div class="note info propuesta"><b>Propuesta:</b> registro por producto (cada pan, torta o bebida por separado). Hoy el negocio se lleva con los <a href="#diario">reportes diarios</a> de ingresos y egresos; esta sección queda lista por si más adelante se quiere ese detalle. Las ventas restan del inventario, pero no suman en el Panel principal.</div>`;
 
   /* ---------- Gráficos de finanzas ---------- */
   function stackChart(ser, gran) {
@@ -2114,7 +2225,7 @@
     const alert = (cls, icon, html) => `<div class="alert ${cls}"><span class="ic">${ICON[icon]}</span><span>${html}</span></div>`;
     // Para revisar
     const t = today(), mes = curMes(), diaHoy = Number(t.slice(8));
-    const faltan = db.locales.map((l) => ({ l, d: [1, 2, 3, 4, 5, 6, 7].map((k) => addDays(t, -k)).filter((d) => !db.reportes.some((r) => r.tipo === "CAJA" && r.localId === l.id && r.hasta === d)) })).filter((x) => x.d.length && (ui.local === "todos" || x.l.id === ui.local));
+    const faltan = db.locales.map((l) => ({ l, d: [1, 2, 3, 4, 5, 6, 7].map((k) => addDays(t, -k)).filter((d) => !db.reportes.some((r) => r.tipo === "CAJA" && !r.soloPagos && r.localId === l.id && r.hasta === d)) })).filter((x) => x.d.length && (ui.local === "todos" || x.l.id === ui.local));
     const rolBorr = db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "BORRADOR");
     const mesAnt = addMes(mes, -1);
     const sinRol = db.locales.filter((l) => db.empleados.some((e) => e.activo !== false && e.localId === l.id && e.frecuencia === "MENSUAL" && e.ingreso <= F.lastDay(mesAnt)) && !db.reportes.some((r) => r.tipo === "ROL" && r.localId === l.id && r.mes === mesAnt && r.tramo === "M") && (ui.local === "todos" || l.id === ui.local));
@@ -2124,6 +2235,8 @@
       ...faltan.map((x) => alert("warn", "warn", `<b>Falta el reporte diario de ${esc(x.l.nombre)}:</b> ${x.d.slice().reverse().map((d) => fmt.short(d)).join(", ")}. <a href="#diario">Ir a reportes diarios</a>`)),
       ...rolBorr.map((r) => alert("warn", "clock", `<b>Rol de pagos sin aprobar:</b> ${esc(local(r.localId).nombre)}, ${esc(r.periodoTxt)}. No cuenta como gasto hasta aprobarlo. <a href="#personal" data-route="personal" data-open="${r.id}">Abrir</a>`)),
       sinRol.length && diaHoy >= 3 ? alert("", "personal", `<b>Rol de ${mesTxt(mesAnt).toLowerCase()} pendiente:</b> ${sinRol.map((l) => esc(l.nombre)).join(", ")}. Sin rol, la utilidad no descuenta los sueldos. <a href="#personal" data-f="go-roles">Ir a roles</a>`) : "",
+      ...PPX.pagos.pendientes(db).filter((p) => ui.local === "todos" || p.localId === ui.local).map((p) => { const d = PPX.pagos.faltan(p); return alert(d < 0 ? "bad" : "warn", "pagos", `<b>${esc(p.concepto)}</b> (${esc(local(p.localId).nombre)}): ${PPX.pagos.estadoTxt(d).toLowerCase()}, ${fmt.date(p.proximo)}${p.monto ? ` · ${fmt.money(p.monto)}` : ""}. ${isAdmin() ? `<a role="button" tabindex="0" class="lnk" data-f="pago-pay" data-id="${p.id}">Registrar pago</a>` : ""}`); }),
+      s.sueldosEst > 0 ? alert("", "personal", `<b>Sueldos estimados: ${fmt.money(s.sueldosEst)}.</b> Hay días de este período sin rol de pagos aprobado; se calculan con el costo mensual de cada trabajador. Al aprobar el rol se usa el valor exacto. <a href="#personal" data-f="go-roles">Ir a roles</a>`) : "",
       sinDetPct > 0.5 && s.caja > 0 ? alert("", "tag", `<b>${fmt.pct(sinDetPct)} de los egresos están sin detallar.</b> Si se registran por categoría, sabrás en qué se va el dinero. <a href="#diario">Ir a reportes diarios</a>`) : "",
     ].filter(Boolean);
 
@@ -2150,7 +2263,7 @@
         <span class="sub">${sp.ingresos ? dTxt(delta(s.ingresos, sp.ingresos), "frente al período anterior") : `${s.reportes} reporte${s.reportes === 1 ? "" : "s"} diario${s.reportes === 1 ? "" : "s"}`}</span>
         <div class="spark">${sparkline(trend.map((x) => ({ v: x.ingresos })), "#E3B263")}</div></div>
       <div class="kpi"><span class="eyebrow">Egresos</span><span class="val num" data-count="${s.egresos}" data-fmt="money">${fmt.money(s.egresos)}</span>
-        <span class="sub">Del día ${fmt.money(s.caja)} · sueldos ${fmt.money(s.sueldos)}</span><div class="spark">${sparkline(trend.map((x) => ({ v: x.egresos })), "var(--s2)")}</div></div>
+        <span class="sub">Del día ${fmt.money(s.caja)} · sueldos ${fmt.money(s.sueldos)}${s.sueldosEst ? ` (${fmt.money(s.sueldosEst)} estimado)` : ""}</span><div class="spark">${sparkline(trend.map((x) => ({ v: x.egresos })), "var(--s2)")}</div></div>
       <div class="kpi"><span class="eyebrow">Utilidad</span><span class="val num ${s.utilidad < 0 ? "" : "good"}" style="${s.utilidad < 0 ? "color:var(--bad)" : ""}" data-count="${s.utilidad}" data-fmt="money">${fmt.money(s.utilidad)}</span>
         <span class="sub">${isFinite(s.margen) ? `${fmt.pct(s.margen)} de los ingresos` : "Ingresos − egresos"}${sp.ingresos ? " · " + dTxt(delta(s.utilidad, sp.utilidad), "") : ""}</span><div class="spark">${sparkline(trend.map((x) => ({ v: x.utilidad })), "var(--good)")}</div></div>
       ${ui.local === "todos" && totIng > 0 ? `<div class="kpi"><span class="eyebrow">Local con más utilidad</span><span class="val val-name">${esc(best.l.nombre)}</span>
@@ -2274,7 +2387,7 @@
       rows.push(["Fecha", "Local", "Categoría", "Origen", "Detalle", "Monto"].map((v, i) => ({ v, s: i === 5 ? "headerR" : "header" })));
       const first = rows.length + 1;
       const eg = F.egresos(db, range, "todos").filter((e) => ids.includes(e.localId)).sort((a, b) => a.fecha.localeCompare(b.fecha));
-      for (const e of eg) rows.push([{ v: e.fecha, s: "date" }, local(e.localId).nombre, catName(e.categoriaId), ORIGEN[e.origen][0], e.origen === "rol" ? e.detalle : e.r.obs || "", { v: e.monto, s: "money" }]);
+      for (const e of eg) rows.push([{ v: e.fecha, s: "date" }, local(e.localId).nombre, catName(e.categoriaId), ORIGEN[e.origen][0], e.origen === "caja" ? e.detalle || (e.r && e.r.obs) || "" : e.detalle || "", { v: e.monto, s: "money" }]);
       const last = rows.length;
       if (eg.length) rows.push([{ v: "Total", s: "totalLabel" }, "", "", "", "", { v: round2(eg.reduce((a, e) => a + e.monto, 0)), s: "totalMoney", f: `SUM(F${first}:F${last})` }]);
       out.push({ name: "Egresos", cols: [12, 14, 28, 16, 40, 14], rows, freeze: "A6", filter: eg.length ? `A5:F${last}` : null });
@@ -2309,6 +2422,17 @@
       case "tab": e.preventDefault(); ui[ds.key] = ds.v; ui.viewId = null; ui.rolDraft = null; ui.rolNew = null; ui.catEdit = null; return render();
       case "set": ui[ds.key] = ds.v; return render();
       case "caja-new": return openCajaDialog(null, { localId: ds.loc, fecha: ds.fecha });
+      case "pago-new": return openPagoDialog(null);
+      case "pago-edit": if (e.target.closest("[data-f=pago-pay]")) return; return openPagoDialog(ds.id);
+      case "pago-pay": return openPagarDialog(ds.id);
+      case "pago-pop": return showPagosPopup(true);
+      case "prod-more": ui.prodLimit = (ui.prodLimit || 60) + 60; return render();
+      case "inv-more": ui.invLimit = (ui.invLimit || 60) + 60; return render();
+      case "cat-inicial": {
+        const C = window.PPX_CATALOGO_INICIAL; if (!C || !isAdmin()) return;
+        const rows = C.productos.map((r) => r.slice()); rows.sucursal = "EDUPAN"; rows.generado = C.fecha;
+        return showImport(rows, C.fuente);
+      }
       case "caja-open": return openCajaDialog(ds.id);
       case "go-roles": ui.perTab = "roles"; if (route() === "personal") { e.preventDefault(); render(); } return;
       case "cat-edit": ui.catEdit = ds.id; render(); $("#cat-ren")?.focus(); return;
@@ -2340,6 +2464,8 @@
   });
   document.addEventListener("change", (e) => {
     const t = e.target;
+    if (t.dataset.pf) { ui[t.dataset.pf] = t.value; ui.prodLimit = 60; ui.invLimit = 60; return render(); }
+    if (t.id === "imp-file" && t.files[0]) { const f = t.files[0]; t.value = ""; return openImportDialog(f); }
     if (t.dataset.rol && ui.rolDraft) {
       const [id, k] = t.dataset.rol.split(":"); ui.rolDraft.inp[id][k] = t.value.trim();
       setTimeout(() => { const a = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.rol : null; const y = window.scrollY; render(); window.scrollTo(0, y); if (a) { const n = document.querySelector(`[data-rol="${a}"]`); if (n) { n.focus(); n.select && n.select(); } } }, 0);
@@ -2387,6 +2513,153 @@
       db.nomina = Object.assign(db.nomina, n); save(); render(); return toast("Valores guardados");
     }
   });
+
+  /* ---------- Pagos programados (arriendo, servicios, proveedores) ---------- */
+  const PG = PPX.pagos;
+  const egCats = () => db.categorias.filter((c) => c.tipo === "egreso" && c.activo);
+  const diasPill = (d) => `<span class="pill ${d < 0 ? "bad" : d <= PG.AVISO_DIAS ? "warn" : "neutral"}">${PG.estadoTxt(d)}</span>`;
+  function viewPagos() {
+    const activos = db.pagos.filter((p) => p.activo !== false).sort((a, b) => (a.proximo || "9").localeCompare(b.proximo || "9"));
+    const pend = PG.pendientes(db), hist = db.pagos.flatMap((p) => (p.historial || []).map((h) => ({ ...h, p }))).sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.registrado || "").localeCompare(a.registrado || "")).slice(0, 40);
+    const mesTot = activos.filter((p) => p.proximo && p.proximo.slice(0, 7) === curMes()).reduce((a, p) => a + (Number(p.monto) || 0), 0);
+    const termin = db.pagos.filter((p) => p.activo === false);
+    return `
+    <div class="page-head">
+      <div class="lead"><span class="eyebrow">Recordatorios</span><h1>Pagos programados</h1><p>Arriendo, luz, agua, internet, facturas de proveedores… Desde ${PG.AVISO_DIAS} días antes de la fecha, el sistema te lo recuerda cada vez que entras, hasta que registres el pago.</p></div>
+      ${isAdmin() ? `<button class="btn primary" data-f="pago-new">${ICON.plus} Nuevo pago programado</button>` : ""}
+    </div>
+    <section class="kpis" aria-label="Resumen de pagos">
+      <div class="kpi hero"><span class="eyebrow">Por pagar pronto</span><span class="val num">${pend.length}</span><span class="sub">${pend.length ? `${fmt.money(pend.reduce((a, p) => a + (Number(p.monto) || 0), 0))} estimado` : "Nada en los próximos días"}</span></div>
+      <div class="kpi"><span class="eyebrow">Vencidos</span><span class="val num" style="color:${pend.some((p) => PG.faltan(p) < 0) ? "var(--bad)" : "inherit"}">${pend.filter((p) => PG.faltan(p) < 0).length}</span><span class="sub">Fecha pasada y sin registrar el pago</span></div>
+      <div class="kpi"><span class="eyebrow">Programados</span><span class="val num">${activos.length}</span><span class="sub">Recurrentes y de una sola vez</span></div>
+      <div class="kpi"><span class="eyebrow">Vencen este mes</span><span class="val num">${fmt.money(mesTot)}</span><span class="sub">Suma de los montos estimados</span></div>
+    </section>
+    ${pend.length ? `<section class="card"><div class="card-head"><div><h2>Para pagar ya</h2><p class="muted small">Vencidos o con ${PG.AVISO_DIAS} días o menos</p></div></div><div class="pago-list">${pend.map(pagoItem).join("")}</div></section>` : ""}
+    <section class="card">
+      <div class="card-head"><div><h2>Todos los pagos programados</h2><p class="muted small">Toca uno para editarlo</p></div></div>
+      ${activos.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Concepto</th><th>Local</th><th class="hide-sm">Categoría</th><th class="hide-sm">Frecuencia</th><th>Próxima fecha</th><th class="r">Monto</th><th></th></tr></thead>
+        <tbody>${activos.map((p) => { const d = PG.faltan(p); return `<tr class="click" tabindex="0" data-f="pago-edit" data-id="${p.id}"><td><b>${esc(p.concepto)}</b>${p.beneficiario ? `<br><span class="muted small">${esc(p.beneficiario)}</span>` : ""}</td><td>${esc(local(p.localId).nombre)}</td><td class="hide-sm">${esc(catName(p.categoriaId))}</td><td class="hide-sm">${PG.FRECUENCIAS[p.frecuencia]}</td>
+          <td style="white-space:nowrap">${fmt.date(p.proximo)}<br>${diasPill(d)}</td><td class="r num">${p.monto ? fmt.money(p.monto) : "—"}</td>
+          <td style="text-align:right">${isAdmin() ? `<button class="btn small-btn ${d <= PG.AVISO_DIAS ? "primary" : ""}" data-f="pago-pay" data-id="${p.id}">Registrar pago</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`
+        : `<div class="empty">No hay pagos programados.${isAdmin() ? " Agrega el arriendo, el internet o una factura de proveedor con «Nuevo pago programado»." : ""}</div>`}
+    </section>
+    <section class="card">
+      <div class="card-head"><div><h2>Pagos realizados</h2><p class="muted small">Cada pago queda como egreso en el reporte diario del local, con su categoría</p></div></div>
+      ${hist.length ? `<div class="table-wrap"><table><thead><tr><th>Fecha de pago</th><th>Concepto</th><th>Local</th><th class="hide-sm">Correspondía al</th><th class="r">Monto</th></tr></thead>
+        <tbody>${hist.map((h) => `<tr><td class="num">${fmt.date(h.fecha)}</td><td><b>${esc(h.p.concepto)}</b></td><td>${esc(local(h.localId || h.p.localId).nombre)}</td><td class="hide-sm">${h.venc ? fmt.date(h.venc) : "—"}</td><td class="r num"><b>${fmt.money(h.monto)}</b></td></tr>`).join("")}</tbody></table></div>`
+        : `<div class="empty">Todavía no se ha registrado ningún pago.</div>`}
+      ${termin.length ? `<p class="muted small" style="margin-top:10px">${termin.length} pago${termin.length === 1 ? "" : "s"} de una sola vez ya completado${termin.length === 1 ? "" : "s"} o desactivado${termin.length === 1 ? "" : "s"}.</p>` : ""}
+    </section>`;
+  }
+  const pagoItem = (p) => { const d = PG.faltan(p); return `<div class="pago-item ${d < 0 ? "bad" : ""}">
+      <div><b>${esc(p.concepto)}</b><span class="muted small">${esc(local(p.localId).nombre)} · ${esc(catName(p.categoriaId))}${p.beneficiario ? " · " + esc(p.beneficiario) : ""}</span></div>
+      <div class="r"><b class="num">${p.monto ? fmt.money(p.monto) : "—"}</b><span class="small">${fmt.date(p.proximo)} · ${diasPill(d)}</span></div>
+      ${isAdmin() ? `<button class="btn primary small-btn" data-f="pago-pay" data-id="${p.id}">Registrar pago</button>` : ""}</div>`; };
+
+  function openPagoDialog(id) {
+    if (!isAdmin()) return;
+    const p0 = id ? db.pagos.find((x) => x.id === id) : null;
+    const v = p0 || { concepto: "", beneficiario: "", categoriaId: "arriendo", localId: db.locales[0].id, frecuencia: "MENSUAL", proximo: addDays(today(), 5), monto: "", nota: "" };
+    let confirmDel = false;
+    const { ov, close } = dialog(`<form class="dialog" id="pago-form" novalidate role="dialog" aria-modal="true" aria-labelledby="pg-t">
+      ${dlgHead("pg-t", p0 ? "Editar pago programado" : "Nuevo pago programado")}
+      <div class="field"><label for="pg-con">Concepto</label><input class="input" id="pg-con" maxlength="80" value="${esc(v.concepto)}" placeholder="Ej.: Internet, arriendo, factura de Pronaca"></div>
+      <div class="grid2">
+        <div class="field"><label for="pg-ben">A quién se paga</label><input class="input" id="pg-ben" maxlength="80" value="${esc(v.beneficiario || "")}" placeholder="Opcional: proveedor o empresa" list="pg-bens"><datalist id="pg-bens">${[...new Set(db.pagos.map((x) => x.beneficiario).filter(Boolean))].map((x) => `<option value="${esc(x)}">`).join("")}</datalist></div>
+        <div class="field"><label for="pg-cat">Categoría</label><select class="input" id="pg-cat">${egCats().map((c) => `<option value="${c.id}" ${v.categoriaId === c.id ? "selected" : ""}>${esc(c.nombre)}</option>`).join("")}</select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="pg-loc">Local</label>${localSelect("pg-loc", v.localId)}</div>
+        <div class="field"><label for="pg-frec">Se repite</label><select class="input" id="pg-frec">${Object.entries(PG.FRECUENCIAS).map(([k, x]) => `<option value="${k}" ${v.frecuencia === k ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="pg-fecha">${p0 ? "Próxima fecha de pago" : "Fecha de pago"}</label><input class="input" type="date" id="pg-fecha" value="${v.proximo}"><span class="hint">Los recurrentes avanzan solos al registrar cada pago.</span></div>
+        <div class="field"><label for="pg-monto">Monto aproximado</label><input class="input num" id="pg-monto" inputmode="decimal" value="${showNum(v.monto)}" placeholder="Opcional"><span class="hint">Al pagar escribes el valor real.</span></div>
+      </div>
+      <div class="field"><label for="pg-nota">Nota</label><input class="input" id="pg-nota" maxlength="200" value="${esc(v.nota || "")}" placeholder="Opcional: n.º de cuenta, contrato, forma de pago…"></div>
+      <div id="pg-err" class="errors"></div><div id="pg-conf"></div>
+      <div class="actions">${p0 ? `<button type="button" class="btn ghost-danger" data-pgdel style="margin-right:auto">Quitar</button>` : ""}<button type="button" class="btn" data-close>Cancelar</button><button class="btn primary" type="submit">Guardar</button></div>
+    </form>`);
+    const f = $("#pago-form", ov);
+    f.addEventListener("click", (e) => {
+      if (e.target.closest("[data-pgdel]")) $("#pg-conf", f).innerHTML = `<div class="confirm-box"><span>¿Quitar «${esc(p0.concepto)}»? Ya no se recordará. Los pagos registrados se mantienen.</span><div class="actions"><button type="button" class="btn ghost" data-pgno>Cancelar</button><button type="button" class="btn danger" data-pgok>Quitar</button></div></div>`;
+      if (e.target.closest("[data-pgno]")) $("#pg-conf", f).innerHTML = "";
+      if (e.target.closest("[data-pgok]")) { p0.activo = false; audit("Pago programado quitado", p0.concepto); save(); close(); render(); toast("Pago programado quitado"); }
+    });
+    void confirmDel;
+    f.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const concepto = $("#pg-con", f).value.trim().replace(/\s+/g, " "), fecha = $("#pg-fecha", f).value, montoRaw = $("#pg-monto", f).value.trim(), monto = montoRaw === "" ? null : numOk(montoRaw), errs = [];
+      if (!concepto) errs.push("Escribe el concepto (qué se paga).");
+      if (!fecha) errs.push("Elige la fecha de pago.");
+      if (monto !== null && (isNaN(monto) || monto < 0)) errs.push("El monto debe ser un número igual o mayor a 0, o déjalo vacío.");
+      if (errs.length) { $("#pg-err", f).innerHTML = errBox(errs); return; }
+      const o = { concepto, beneficiario: $("#pg-ben", f).value.trim(), categoriaId: $("#pg-cat", f).value, localId: $("#pg-loc", f).value, frecuencia: $("#pg-frec", f).value, proximo: fecha, dia: Number(fecha.slice(8)), monto: monto === null ? null : round2(monto), nota: $("#pg-nota", f).value.trim(), activo: true };
+      if (p0) { Object.assign(p0, o); delete p0.ejemplo; } else db.pagos.push({ id: uid(), historial: [], ...o });
+      audit(p0 ? "Pago programado editado" : "Pago programado creado", `${concepto} · ${local(o.localId).nombre} · ${PG.FRECUENCIAS[o.frecuencia].toLowerCase()} · próximo ${fmt.date(fecha)}${o.monto ? " · " + fmt.money(o.monto) : ""}`);
+      save(); close(); render(); toast("Pago programado guardado");
+    });
+    $("#pg-con", f).focus();
+  }
+
+  /** Registrar que se pagó: queda como egreso en el reporte diario del local y la fecha avanza. */
+  function openPagarDialog(id, after) {
+    if (!isAdmin()) return;
+    const p = db.pagos.find((x) => x.id === id);
+    if (!p) return;
+    const { ov, close } = dialog(`<form class="dialog" id="pagar-form" novalidate role="dialog" aria-modal="true" aria-labelledby="pp-t">
+      ${dlgHead("pp-t", "Registrar pago")}
+      <div class="note info"><b>${esc(p.concepto)}</b> · ${esc(local(p.localId).nombre)}${p.beneficiario ? " · " + esc(p.beneficiario) : ""}<br>Correspondía al ${fmt.date(p.proximo)} · ${PG.estadoTxt(PG.faltan(p)).toLowerCase()}</div>
+      <div class="grid2">
+        <div class="field"><label for="pp-monto">Monto pagado</label><input class="input num big-input" id="pp-monto" inputmode="decimal" value="${showNum(p.monto)}" placeholder="0,00"></div>
+        <div class="field"><label for="pp-fecha">Fecha en que se pagó</label><input class="input" type="date" id="pp-fecha" value="${today()}" max="${today()}"></div>
+      </div>
+      <p class="muted small">Se registra como egreso de <b>${esc(local(p.localId).nombre)}</b> (${esc(catName(p.categoriaId))}) en el reporte diario de esa fecha. ${p.frecuencia === "UNICA" ? "Como es de una sola vez, deja de recordarse." : `El próximo recordatorio queda para el ${fmt.date(PG.siguiente(p, p.proximo))}.`}</p>
+      <div id="pp-err" class="errors"></div>
+      <div class="actions"><button type="button" class="btn" data-close>Cancelar</button><button class="btn primary" type="submit">${ICON.check} Ya lo pagué</button></div>
+    </form>`);
+    const f = $("#pagar-form", ov);
+    f.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const monto = numOk($("#pp-monto", f).value), fecha = $("#pp-fecha", f).value, errs = [];
+      if (isNaN(monto) || monto <= 0) errs.push("Escribe el monto que se pagó (mayor a 0).");
+      if (!fecha || fecha > today()) errs.push("Elige la fecha del pago (no puede ser futura).");
+      if (errs.length) { $("#pp-err", f).innerHTML = errBox(errs); return; }
+      // Egreso en el reporte diario (si ese día aún no tiene reporte, se crea solo con este egreso)
+      let caja = db.reportes.find((r) => r.tipo === "CAJA" && r.localId === p.localId && r.hasta === fecha);
+      const linea = { categoriaId: p.categoriaId, monto: round2(monto), pagoId: p.id, detalle: p.concepto };
+      if (caja) caja.lineas.push(linea);
+      else { caja = { id: uid(), tipo: "CAJA", localId: p.localId, desde: fecha, hasta: fecha, ingresos: 0, ingLineas: [], lineas: [linea], estado: "CONFIRMADO", obs: "", soloPagos: true, creado: util.now() }; db.reportes.push(caja); }
+      const venc = p.proximo;
+      p.historial = (p.historial || []).concat([{ fecha, monto: round2(monto), venc, localId: p.localId, cajaId: caja.id, registrado: util.now() }]).slice(-36);
+      const sig = PG.siguiente(p, venc);
+      if (sig) p.proximo = sig; else p.activo = false;
+      delete p.ejemplo;
+      audit("Pago registrado", `${p.concepto} · ${local(p.localId).nombre} · ${fmt.money(monto)} el ${fmt.date(fecha)}${sig ? ` · próximo ${fmt.date(sig)}` : " · completado"}`);
+      save(); close(); render(); toast(sig ? `Pago registrado. Próximo: ${fmt.date(sig)}` : "Pago registrado");
+      if (after) after();
+    });
+    $("#pp-monto", f).focus(); $("#pp-monto", f).select();
+  }
+
+  /** Ventana que aparece al entrar si hay pagos a 3 días o menos (o vencidos). */
+  function showPagosPopup(force) {
+    if (!session || !isAdmin()) return;
+    document.querySelector(".overlay.pagos-pop")?.remove();
+    const pend = PG.pendientes(db);
+    if (!pend.length) { if (force) toast("No hay pagos próximos"); return; }
+    const { ov, close } = dialog(`<div class="dialog wide" role="alertdialog" aria-modal="true" aria-labelledby="pop-t">
+      <div class="card-head" style="margin:0"><div><h2 id="pop-t">${ICON.clock} Pagos por hacer</h2><p class="muted small">${pend.length} pago${pend.length === 1 ? "" : "s"} vence${pend.length === 1 ? "" : "n"} en ${PG.AVISO_DIAS} días o menos. Este aviso aparece cada vez que entras hasta que lo registres.</p></div><button type="button" class="icon-btn" data-close aria-label="Cerrar">${ICON.x}</button></div>
+      <div class="pago-list">${pend.map(pagoItem).join("")}</div>
+      <div class="actions"><a class="btn ghost" href="#pagos" data-close>Ver todos los pagos</a><button type="button" class="btn" data-close>Recordarme después</button></div>
+    </div>`);
+    ov.classList.add("pagos-pop");
+    ov.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-f=pago-pay]"); if (!b) return;
+      e.stopPropagation(); close(); openPagarDialog(b.dataset.id, () => showPagosPopup(false));
+    }, true);
+  }
 
   /* ---------- Ajustes ---------- */
   const canManageUsers = () => isAdmin() && (data.DEMO || !!session.duena);
@@ -2479,10 +2752,11 @@
     }
     switch (ds.act) {
       case "logout":
+        ui.popupDone = false;
         if (!data.DEMO && data.cloud.pending() && !confirm("Hay cambios que todavía se están guardando en la nube. ¿Salir de todas formas?")) return;
         session = null; ui.draft = null; ui.viewId = null;
         if (data.DEMO) { data.store.saveSession(null); return render(); }
-        db = data.empty(); ui.gate = null; ui.loginMode = "entrar"; ui.loginMsg = null;
+        db = data.empty(); ui.gate = null; ui.loginMode = "entrar"; ui.loginMsg = null; ui.popupDone = false;
         data.cloud.signOut().catch(() => {}); return render();
       case "user-del": ui.confirmUserDel = ds.email; return render();
       case "user-del-cancel": ui.confirmUserDel = null; return render();
@@ -2500,7 +2774,7 @@
         return;
       }
       case "prod-new": if (isAdmin()) openProdDialog(null); return;
-      case "prod-edit": if (isAdmin()) openProdDialog(ds.id); return;
+      case "prod-edit": openProdDialog(ds.id); return;
       case "prod-toggle": { if (!isAdmin()) return; const p = producto(ds.id); p.activo = !p.activo; audit(p.activo ? "Producto activado" : "Producto desactivado", p.nombre); save(); render(); return toast(p.activo ? "Producto activado" : "Producto desactivado"); }
       case "rep-new": if (!isAdmin()) return; ui.viewId = null; ui.draft = newDraft(); return render();
       case "rep-cancel": ui.draft = null; return render();
@@ -2603,6 +2877,8 @@
 
   document.addEventListener("input", (e) => {
     const t = e.target;
+    if (t.id === "inv-q") { ui.invQ = t.value; ui.invLimit = 60; const pos = t.selectionStart; render(); const n = $("#inv-q"); n.focus(); n.setSelectionRange(pos, pos); return; }
+    if (t.id === "prod-q") { ui.prodLimit = 60; }
     if (t.id === "prod-q") { ui.prodQuery = t.value; const pos = t.selectionStart; render(); const n = $("#prod-q"); n.focus(); n.setSelectionRange(pos, pos); return; }
     if (!ui.draft) return;
     if (t.dataset.line !== undefined && t.dataset.k !== "productoId" && t.dataset.k !== "motivo") {

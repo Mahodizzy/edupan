@@ -40,6 +40,8 @@
     if (!Array.isArray(db.empleados)) db.empleados = [];
     db.empleados.forEach((e) => { if (e.decimos === undefined) e.decimos = true; if (e.fondos === undefined) e.fondos = true; });
     if (!Array.isArray(db.fijos)) db.fijos = [];
+    if (!Array.isArray(db.pagos)) db.pagos = [];
+    if (!db.categorias.some((c) => c.id === "proveedores")) db.categorias.push({ id: "proveedores", nombre: "Pago a proveedores", tipo: "egreso", activo: true });
     db.nomina = Object.assign(F.NOMINA(), db.nomina || {});
     return db;
   }
@@ -48,7 +50,7 @@
   function empty() {
     return {
       version: 4, reportes: [], productos: [],
-      locales: LOCALES(), categorias: PPX.fin.CATEGORIAS(), empleados: [], fijos: [], nomina: PPX.fin.NOMINA(),
+      locales: LOCALES(), categorias: PPX.fin.CATEGORIAS(), empleados: [], fijos: [], pagos: [], nomina: PPX.fin.NOMINA(),
       usuarios: [{ id: "ely", nombre: ADMIN_NAME, email: ADMIN_EMAIL, rol: "ADMINISTRADORA", activo: true }],
       auditoria: [{ id: util.uid(), fecha: util.now(), usuario: "Sistema", accion: "Sistema iniciado", detalle: "Locales Matriz, Sucursal 1 y Sucursal 2 creados" }],
     };
@@ -101,6 +103,26 @@
   /** Datos de ejemplo (solo en la vista previa): 10 productos y 10 semanas de reportes por local. */
   function seed() {
     if (!DEMO) return empty();
+    const db = seedBase();
+    // Productos reales de EduPan (Excel del 28/10/2026) con su stock en la Matriz
+    const C = window.PPX_CATALOGO_INICIAL;
+    if (C) {
+      db.reportes = db.reportes.filter((r) => !["VENTAS", "ENTRADA", "PERDIDA", "INVENTARIO"].includes(r.tipo));
+      db.productos = [];
+      PPX.cat.importRows(db, C.productos, { localId: C.local, fecha: C.fecha, archivo: C.fuente });
+    }
+    // Pagos programados de ejemplo: uno vence en 2 días, otro ya venció
+    const t = util.today(), P = (concepto, categoriaId, localId, frecuencia, proximo, monto, beneficiario) => ({ id: util.uid(), concepto, categoriaId, localId, frecuencia, proximo, dia: Number(proximo.slice(8)), monto, beneficiario, nota: "", activo: true, historial: [], ejemplo: true });
+    db.pagos = [
+      P("Internet", "internet", "matriz", "MENSUAL", util.addDays(t, 2), 30, "Netlife"),
+      P("Planilla de luz", "luz", "suc2", "MENSUAL", util.addDays(t, -1), 55, "CNEL EP"),
+      P("Arriendo del local", "arriendo", "suc1", "MENSUAL", util.addDays(t, 9), 280, "Dueño del local"),
+      P("Factura Distribuidora Andina (colas)", "proveedores", "matriz", "UNICA", util.addDays(t, 3), 186.4, "Distribuidora Andina"),
+    ];
+    if (!db.categorias.some((c) => c.id === "proveedores")) db.categorias.push({ id: "proveedores", nombre: "Pago a proveedores", tipo: "egreso", activo: true });
+    return db;
+  }
+  function seedBase() {
     const locales = LOCALES();
     // origen: "P" = producción propia, "C" = compra a proveedor (reventa)
     const P = (nombre, precio, costo, unidad, base, stockMin, pas, origen = "P") => ({ id: util.uid(), nombre, precio, costo, unidad, stockMin, activo: true, ejemplo: true, base, pas: !!pas, origen });
@@ -250,7 +272,7 @@
     (acc.lectores || []).forEach((e) => out.push({ id: e, nombre: nombres[e] || e, email: e, rol: "LECTURA", activo: true }));
     return out;
   }
-  const CAT_KEYS = ["productos", "locales", "categorias", "empleados", "fijos", "nomina"];
+  const CAT_KEYS = ["productos", "locales", "categorias", "empleados", "fijos", "nomina", "pagos"];
   const catalogOf = (db) => plain(Object.assign({ version: 4, ultimoRespaldo: db.ultimoRespaldo || null }, ...CAT_KEYS.map((k) => ({ [k]: db[k] }))));
   const applyCatalog = (db, c) => { CAT_KEYS.forEach((k) => { if (c[k] !== undefined) db[k] = c[k]; }); db.ultimoRespaldo = c.ultimoRespaldo || null; return migrate(db); };
 

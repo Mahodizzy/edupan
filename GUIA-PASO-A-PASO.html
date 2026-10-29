@@ -176,7 +176,9 @@ appId: "1:1234567890:web:abc123..."</pre></li>
     <ol>
       <li>Abre la dirección de Netlify y toca <b class="ui">Entrar con Google</b> con uno de esos correos. Entra directo.</li>
       <li>La primera vez el sistema crea los 3 locales y las categorías. Verás el panel vacío con los pasos para empezar.</li>
-      <li>Empieza por <b>Reportes diarios → Registrar día</b> y luego <b>Personal</b>.</li>
+      <li>En <b>Productos</b> toca <b>Cargar productos</b>, elige a qué local pertenece el stock del Excel y confirma: se cargan los 282 productos de EduPan. Más adelante, con <b>Importar Excel</b> puedes subir un reporte más nuevo del sistema de la empresa.</li>
+      <li>En <b>Pagos programados</b> agrega el arriendo, la luz, el agua, el internet y las facturas de proveedores con su fecha. Desde 3 días antes te aparecerá el aviso al entrar.</li>
+      <li>Luego usa <b>Reportes diarios → Registrar día</b> y <b>Personal</b> (trabajadores y rol de pagos).</li>
     </ol>
     <div class="tip"><b>¿Qué pasa si otra persona intenta entrar con su Google?</b> Google la identifica, pero el panel la rechaza al instante («Acceso denegado»), cierra la sesión y no ve ningún dato. Además, las reglas de la base de datos bloquean cualquier lectura o escritura que no venga de un correo autorizado. No existe la opción de «crear cuenta» en la página.</div>
     <div class="tip"><b>Si alguien no tiene Gmail</b> (por ejemplo, un correo de Hotmail): créale la cuenta tú en Firebase → <b class="ui">Authentication → Usuarios → Agregar usuario</b> (correo y una contraseña temporal). Al entrar por primera vez, el panel le pedirá confirmar su correo con un enlace, y con <b class="ui">¿Olvidaste tu contraseña?</b> pone la suya. Ese correo igual tiene que estar autorizado (como administrador fijo o como lector en Ajustes).</div>

@@ -1,4 +1,4 @@
-# EduPan · Panel de control (PPX) — versión 3.1 (en línea, con reportes diarios y personal)
+# EduPan · Panel de control (PPX) — versión 3.2 (en línea: reportes diarios, pagos programados, inventario y personal)
 
 Panel web para que la administradora de EduPan registre las ventas, la producción,
 las compras a proveedores y las pérdidas de **Matriz, Sucursal 1 y Sucursal 2** (dos
@@ -30,7 +30,8 @@ edupan-ppx/
     ├── js/
     │   ├── config.js       Empresa, administradora y configuración de Firebase
     │   ├── core.js         Formatos y reglas de negocio (cálculos, validaciones)
-    │   ├── excel.js        Genera los informes en Excel (.xlsx), sin internet
+    │   ├── excel.js        Genera los informes en Excel (.xlsx) y lee el Excel de productos
+    │   ├── catalogo-edupan.js  Los 282 productos del Excel de EduPan (28/10/2026) para la carga inicial
     │   ├── datos.js        Login (Firebase Auth) y base de datos (Firestore)
     │   └── app.js          Pantallas: login, panel, ventas, inventario (con pérdidas), productos, informes, ajustes
     └── img/
@@ -40,7 +41,7 @@ edupan-ppx/
         └── mark-dark.webp  Ícono pequeño (fondo oscuro)
 ```
 
-Los archivos JavaScript se cargan en este orden: `config.js` → `core.js` → `excel.js` → `datos.js` → `app.js`.
+Los archivos JavaScript se cargan en este orden: `config.js` → `core.js` → `excel.js` → `catalogo-edupan.js` → `datos.js` → `app.js`.
 
 ## Cómo se usa (lo principal)
 
@@ -58,15 +59,30 @@ Los archivos JavaScript se cargan en este orden: `config.js` → `core.js` → `
    calcula el neto a recibir y el costo real. Al **aprobarlo**, su costo cuenta como egreso
    de sueldos del local (por eso los sueldos no se ponen en el reporte diario).
    Los valores de ley (salario básico 2026 = $482, % IESS) se editan en *Valores de ley*.
-3. **Panel:** ingresos, egresos, **utilidad** y el local que más deja, con gráficos y el
+3. **Pagos programados:** arriendo, luz, agua, internet, facturas de proveedores… con su
+   fecha, local, categoría, monto aproximado y si se repite (cada semana, 15 días, mes, año
+   o una sola vez). **Desde 3 días antes** (y si ya venció), cada vez que se entra al panel
+   aparece una ventana con los pagos pendientes, hasta que se toque **Registrar pago**. El
+   pago queda como egreso del local en el reporte diario de esa fecha y el recordatorio
+   avanza solo al siguiente período. Una campana con el número de pendientes queda arriba.
+4. **Productos:** el catálogo de EduPan (ID, código de barras, categoría, marca, unidad, IVA,
+   costo y precio con IVA). **Importar Excel** lee el reporte de productos del sistema de la
+   empresa: agrega los nuevos, actualiza los existentes (por ID o código) y puede registrar su
+   stock como conteo físico del local que elijas (es obligatorio elegirlo; los otros locales no se tocan). Todo es editable; categoría, marca y unidad aceptan
+   valores nuevos y «Generar» crea un código de barras libre.
+5. **Inventario:** existencias por local con búsqueda por nombre, código o ID y filtro por
+   categoría; entradas, pérdidas y conteos físicos.
+6. **Panel:** ingresos, egresos, **utilidad** y el local que más deja, con gráficos y el
    estado de resultados por local: **Utilidad = ingresos − egresos del día − sueldos.**
-4. **Informes:** Excel con *Estado de resultados* (con ingresos y egresos por categoría),
+   Los sueldos salen de los roles aprobados, repartidos por días (un rol de octubre cuenta
+   28/31 si se mira hasta el 28). Si hay días sin rol aprobado, se **estiman** con el costo
+   mensual de cada trabajador activo y el panel lo indica; al aprobar el rol se usa el valor exacto.
+7. **Informes:** Excel con *Estado de resultados* (con ingresos y egresos por categoría),
    *Reportes diarios*, *Egresos* y *Roles de pago*.
 
 ## Propuesta: registro por producto
 
-Productos, **Ventas**, inventario y pérdidas siguen en el sistema, agrupados en el menú
-como **«Propuesta · por producto»**. *Ventas → Registrar nueva venta* funciona como una
+**Resumen por producto** y **Ventas** quedan en el menú como **«Propuesta · por producto»**. *Ventas → Registrar nueva venta* funciona como una
 factura: local, fecha (hoy por defecto) y los productos vendidos con su total; al
 guardarla se resta del inventario. No suma en el panel principal.
 
@@ -124,7 +140,7 @@ Colecciones en Firestore:
 | Ruta | Contenido |
 |---|---|
 | `ppx/acceso` | Correos con acceso: `admins`, `lectores` y sus nombres |
-| `ppx/catalogo` | Locales, categorías de ingresos y egresos, trabajadores, valores de ley, productos y último respaldo |
+| `ppx/catalogo` | Locales, categorías de ingresos y egresos, trabajadores, valores de ley, pagos programados, productos y último respaldo |
 | `reportes/{id}` | Un documento por registro: reporte diario (CAJA), rol de pagos (ROL) y, en la propuesta, ventas, entradas, pérdidas y conteos |
 | `auditoria/{id}` | Registro de actividad (solo se agrega) |
 

@@ -254,7 +254,11 @@ window.PPX = window.PPX || {};
   const inRange = (r, range, localId) => r.hasta >= range[0] && r.hasta <= range[1] && (!localId || localId === "todos" || r.localId === localId);
   const cajaIn = (db, range, localId) => db.reportes.filter((r) => r.tipo === "CAJA" && inRange(r, range, localId));
   const gastosIn = (db, range, localId) => db.reportes.filter((r) => r.tipo === "GASTO" && inRange(r, range, localId));
-  const rolesIn = (db, range, localId) => db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "CONFIRMADO" && inRange(r, range, localId));
+  const dayDiff = (a, b) => Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 864e5);
+  /** Días en común entre dos períodos (fechas incluidas). */
+  const overlapDays = (a1, b1, a2, b2) => { const a = a1 > a2 ? a1 : a2, b = b1 < b2 ? b1 : b2; return a <= b ? dayDiff(a, b) + 1 : 0; };
+  /** Roles aprobados que se cruzan con el período (no solo los que terminan dentro). */
+  const rolesIn = (db, range, localId) => db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "CONFIRMADO" && (!localId || localId === "todos" || r.localId === localId) && overlapDays(r.desde, r.hasta, range[0], range[1]) > 0);
   const cajaEgresos = (r) => r2(r.lineas.reduce((a, l) => a + num(l.monto), 0));
   const rolTotals = (r) => {
     const t = { total: 0, iess: 0, desc: 0, neto: 0, patronal: 0, provisiones: 0, costo: 0, n: r.lineas.length };
@@ -268,21 +272,57 @@ window.PPX = window.PPX || {};
     const out = [];
     for (const r of cajaIn(db, range, localId)) r.lineas.forEach((l, i) => num(l.monto) && out.push({ fecha: r.hasta, localId: r.localId, categoriaId: l.categoriaId || "", monto: num(l.monto), detalle: l.detalle || "", origen: "caja", r, i, pagado: true }));
     for (const r of gastosIn(db, range, localId)) r.lineas.forEach((l, i) => out.push({ fecha: r.hasta, localId: r.localId, categoriaId: l.categoriaId || "", monto: num(l.monto), detalle: l.detalle || "", origen: "gasto", r, i, pagado: r.pagado !== false, proveedor: r.proveedor || "" }));
-    for (const r of rolesIn(db, range, localId)) out.push({ fecha: r.hasta, localId: r.localId, categoriaId: "sueldos", monto: rolTotals(r).costo, detalle: `Rol de pagos ${r.periodoTxt || ""} · ${r.lineas.length} trabajador${r.lineas.length === 1 ? "" : "es"}`, origen: "rol", r, pagado: true });
+    // Un rol cuenta en proporción a los días de su período que caen dentro del rango consultado
+    for (const r of rolesIn(db, range, localId)) {
+      const dias = dayDiff(r.desde, r.hasta) + 1, en = overlapDays(r.desde, r.hasta, range[0], range[1]), parte = en / dias;
+      out.push({ fecha: r.hasta < range[1] ? r.hasta : range[1], localId: r.localId, categoriaId: "sueldos", monto: r2(rolTotals(r).costo * parte), detalle: `Rol de pagos ${r.periodoTxt || ""} · ${r.lineas.length} trabajador${r.lineas.length === 1 ? "" : "es"}${parte < 1 ? ` · ${en} de ${dias} días` : ""}`, origen: "rol", r, pagado: true });
+    }
+    out.push(...sueldosEstimados(db, range, localId));
+    return out;
+  }
+
+  /**
+   * Sueldos de trabajadores activos en días que ningún rol aprobado cubre todavía.
+   * Se estiman con su costo mensual (sueldo + aportes y beneficios que recibe) para que la
+   * utilidad no se vea inflada mientras se aprueba el rol. Al aprobar el rol, el estimado desaparece.
+   */
+  function sueldosEstimados(db, range, localId) {
+    const emps = (db.empleados || []).filter((e) => e.activo !== false && (!localId || localId === "todos" || e.localId === localId));
+    if (!emps.length) return [];
+    const inicio = db.reportes.filter((r) => r.tipo === "CAJA" || r.tipo === "ROL").map((r) => r.desde).sort()[0];
+    if (!inicio) return [];
+    const hoy = util.today(), fin = range[1] < hoy ? range[1] : hoy, out = [];
+    const cfg = Object.assign(NOMINA(), db.nomina || {});
+    for (const e of emps) {
+      let desde = [range[0], inicio, e.ingreso || inicio].sort().pop();
+      if (desde > fin) continue;
+      const roles = db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "CONFIRMADO" && r.lineas.some((l) => l.empleadoId === e.id));
+      const costoMes = rolLinea(e, { dias: 30 }, cfg, "M", fin).costo;
+      const porMes = new Map();
+      for (let d = desde; d <= fin; d = util.addDays(d, 1)) {
+        if (roles.some((r) => d >= r.desde && d <= r.hasta)) continue;
+        const mes = d.slice(0, 7), diasMes = Number(lastDay(mes).slice(8));
+        const o = porMes.get(mes) || { v: 0, n: 0, ult: d };
+        o.v += costoMes / diasMes; o.n++; o.ult = d; porMes.set(mes, o);
+      }
+      for (const [mes, o] of porMes) out.push({ fecha: o.ult, localId: e.localId, categoriaId: "sueldos", monto: r2(o.v), detalle: `Estimado · ${e.nombre} · ${o.n} día${o.n === 1 ? "" : "s"} de ${mes} sin rol aprobado`, origen: "estimado", empleadoId: e.id, pagado: true });
+    }
     return out;
   }
 
   /** Resumen financiero: ingresos, egresos (caja + gastos + sueldos) y utilidad. */
   function summary(db, range, localId) {
     const cajas = cajaIn(db, range, localId), eg = egresos(db, range, localId);
-    const s = { ingresos: 0, caja: 0, gastos: 0, sueldos: 0, egresos: 0, utilidad: 0, sinDetallar: 0, porPagar: 0, dias: new Set(cajas.map((r) => r.hasta)).size, reportes: cajas.length };
+    const reales = cajas.filter((r) => !r.soloPagos);
+    const s = { ingresos: 0, caja: 0, gastos: 0, sueldos: 0, sueldosEst: 0, egresos: 0, utilidad: 0, sinDetallar: 0, porPagar: 0, dias: new Set(reales.map((r) => r.hasta)).size, reportes: reales.length };
     for (const r of cajas) s.ingresos += num(r.ingresos);
     for (const e of eg) {
-      s[e.origen === "rol" ? "sueldos" : "caja"] += e.monto; // los gastos sueltos de versiones anteriores cuentan como egresos del día
+      s[e.origen === "rol" || e.origen === "estimado" ? "sueldos" : "caja"] += e.monto; // los gastos sueltos cuentan como egresos del día
+      if (e.origen === "estimado") s.sueldosEst += e.monto;
       if (!e.categoriaId) s.sinDetallar += e.monto;
       if (!e.pagado) s.porPagar += e.monto;
     }
-    for (const k of ["ingresos", "caja", "gastos", "sueldos", "sinDetallar", "porPagar"]) s[k] = r2(s[k]);
+    for (const k of ["ingresos", "caja", "gastos", "sueldos", "sueldosEst", "sinDetallar", "porPagar"]) s[k] = r2(s[k]);
     s.egresos = r2(s.caja + s.gastos + s.sueldos);
     s.utilidad = r2(s.ingresos - s.egresos);
     s.margen = s.ingresos ? s.utilidad / s.ingresos : NaN;
@@ -343,16 +383,129 @@ window.PPX = window.PPX || {};
     const d13 = dec ? total / 12 : 0, d14 = dec ? (num(cfg.sbu) / 12) * (dias / 30) : 0;
     const fondos = e.iess && e.fondos !== false && yearsBetween(e.ingreso, hasta) >= 1 ? (total * num(cfg.fondos)) / 100 : 0;
     const mens = dec && !!e.decimosMensual, fondosRol = e.fondosEnRol !== false;
-    const desc = iessP + num(inp.anticipos) + num(inp.otros);
-    const neto = total - desc + (mens ? d13 + d14 : 0) + (fondosRol ? fondos : 0);
+    // Cada valor se redondea a centavos y el neto se arma con esos mismos valores (cuadra con el papel)
     const R = (v) => r2(v);
+    const T = R(total), I = R(iessP), P = R(patronal), D13 = R(d13), D14 = R(d14), FO = R(fondos), A = R(num(inp.anticipos)), O = R(num(inp.otros));
+    const desc = R(I + A + O);
+    const neto = R(T - desc + (mens ? D13 + D14 : 0) + (fondosRol ? FO : 0));
     return {
       empleadoId: e.id, nombre: e.nombre, cargo: e.cargo || "", sueldo: R(num(e.sueldo)), iessAfiliado: !!e.iess, decimosMensual: mens,
-      dias, h50: num(inp.h50), h100: num(inp.h100), bonos: R(num(inp.bonos)), anticipos: R(num(inp.anticipos)), otros: R(num(inp.otros)), nota: inp.nota || "",
-      ganado: R(ganado), extras: R(extras), total: R(total), iessP: R(iessP), desc: R(desc), neto: R(neto),
-      patronal: R(patronal), d13: R(d13), d14: R(d14), fondos: R(fondos), vac: R(vac), costo: R(total + patronal + d13 + d14 + fondos + vac),
+      dias, h50: num(inp.h50), h100: num(inp.h100), bonos: R(num(inp.bonos)), anticipos: A, otros: O, nota: inp.nota || "",
+      ganado: R(ganado), extras: R(extras), total: T, iessP: I, desc, neto,
+      patronal: P, d13: D13, d14: D14, fondos: FO, vac: 0, costo: R(T + P + D13 + D14 + FO),
     };
   }
 
-  PPX.fin = { CATEGORIAS, CATEGORIAS_ING, ingresosPorCategoria, SUELDOS, SIN, NOMINA, cajaIn, gastosIn, rolesIn, cajaEgresos, rolTotals, egresos, summary, byCategoria, series, periodo, rolLinea, MESES, lastDay };
+  PPX.fin = { overlapDays, sueldosEstimados, CATEGORIAS, CATEGORIAS_ING, ingresosPorCategoria, SUELDOS, SIN, NOMINA, cajaIn, gastosIn, rolesIn, cajaEgresos, rolTotals, egresos, summary, byCategoria, series, periodo, rolLinea, MESES, lastDay };
+})(window.PPX);
+
+/* =============================================================
+   Catálogo de productos: importar el Excel del sistema de EduPan
+   (ID, secuencial, nombre, código de barras, unidad, marca, IVA,
+   categoría, stock, costo, PVP y PVP con IVA).
+   ============================================================= */
+(function (PPX) {
+  "use strict";
+  const { util } = PPX;
+  const r2 = util.round2, r4 = (v) => Math.round(v * 10000) / 10000;
+  const norm = (s) => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const COLS = { id: ["id"], sec: ["secuencial"], nombre: ["nombre", "producto", "descripcion"], codigo: ["codigo de barras", "codigo", "cod. barras"], unidad: ["unidad"], marca: ["marca", "proveedor"], iva: ["iva"], categoria: ["categoria"], stock: ["stock", "existencia", "cantidad"], costo: ["costo"], pvp: ["pvp", "precio"], pvpi: ["pvp inc imp", "pvp con iva", "precio con iva", "pvp inc. imp"] };
+
+  /** Convierte las filas leídas de un Excel a la lista estándar [id, sec, nombre, código, unidad, marca, iva, categoría, stock, costo, pvp, pvpConIva]. */
+  function rowsFromSheet(rows) {
+    const hi = rows.findIndex((r) => r && r.some((c) => norm(c) === "nombre") && r.some((c) => norm(c).startsWith("codigo")));
+    if (hi < 0) throw new Error("No se encontró la fila de encabezados (debe tener al menos «Nombre» y «Código de barras»).");
+    const head = rows[hi].map(norm), col = {};
+    for (const [k, names] of Object.entries(COLS)) { const i = head.findIndex((h) => names.includes(h)); if (i >= 0) col[k] = i; }
+    if (col.pvpi === undefined && col.pvp === undefined) throw new Error("No se encontró la columna de precio (PVP).");
+    const num = (v) => { if (v === null || v === undefined || v === "") return null; const n = typeof v === "number" ? v : Number(String(v).replace("%", "").replace(",", ".")); return isNaN(n) ? null : n; };
+    const out = [];
+    for (const r of rows.slice(hi + 1)) {
+      if (!r) continue;
+      const g = (k) => (col[k] === undefined ? null : r[col[k]]);
+      const nombre = String(g("nombre") || "").trim();
+      if (!nombre) continue;
+      const iva = num(g("iva")) ?? 15, pvp = num(g("pvp")), pvpi = num(g("pvpi")) ?? (pvp !== null ? r2(pvp * (1 + iva / 100)) : null);
+      out.push([num(g("id")), g("sec") == null ? "" : String(g("sec")), nombre, g("codigo") == null ? "" : String(g("codigo")).trim(), String(g("unidad") || "UND").trim(), String(g("marca") || "").trim(), iva, String(g("categoria") || "Sin categoría").trim(), num(g("stock")), num(g("costo")), pvp, pvpi]);
+    }
+    if (!out.length) throw new Error("El Excel no tiene productos debajo de los encabezados.");
+    // Datos del encabezado del reporte (por ejemplo «Sucursal: EDUPAN»), solo para mostrarlos
+    const meta = rows.slice(0, hi).flat().filter((c) => typeof c === "string");
+    out.sucursal = (meta.find((c) => /^\s*sucursal\s*:/i.test(c)) || "").replace(/^\s*sucursal\s*:\s*/i, "").trim();
+    out.generado = (meta.find((c) => /fecha\s*:/i.test(c)) || "").replace(/^.*fecha\s*:\s*/i, "").trim();
+    return out;
+  }
+
+  /**
+   * Agrega o actualiza productos (se reconocen por ID, luego por código de barras, luego por nombre).
+   * Un costo en 0 del archivo no borra el costo que ya se haya escrito en el panel.
+   * Si opts.localId viene, el stock del archivo se registra como conteo físico de ese local.
+   */
+  function importRows(db, rows, opts) {
+    const res = { nuevos: 0, actualizados: 0, iguales: 0, conteo: null, lineas: 0 };
+    const byRef = new Map(), byCod = new Map(), byName = new Map();
+    for (const p of db.productos) { if (p.ref != null) byRef.set(Number(p.ref), p); if (p.codigo) byCod.set(String(p.codigo), p); byName.set(norm(p.nombre), p); }
+    const lineas = [];
+    for (const [ref, sec, nombre, codigo, unidad, marca, iva, categoria, stock, costo, pvp, pvpi] of rows) {
+      let p = (ref != null && byRef.get(Number(ref))) || (codigo && byCod.get(codigo)) || byName.get(norm(nombre));
+      const data = { ref: ref != null ? Number(ref) : p && p.ref != null ? p.ref : null, sec: sec || (p && p.sec) || "", nombre, codigo: codigo || (p && p.codigo) || "", unidad, marca, iva, categoria,
+        precio: pvpi != null ? r2(pvpi) : p ? p.precio : 0, precioSinIva: pvp != null ? r4(pvp) : null };
+      if (costo != null && costo > 0.001) data.costo = r4(costo);
+      if (p) {
+        const antes = JSON.stringify(p);
+        Object.assign(p, data, { activo: true });
+        if (p.ejemplo) delete p.ejemplo;
+        if (JSON.stringify(p) === antes) res.iguales++; else res.actualizados++;
+      } else {
+        p = Object.assign({ id: util.uid(), costo: null, stockMin: null, activo: true }, data);
+        db.productos.push(p); res.nuevos++;
+        if (p.ref != null) byRef.set(p.ref, p); if (p.codigo) byCod.set(p.codigo, p); byName.set(norm(p.nombre), p);
+      }
+      if (opts && opts.localId && stock != null && !lineas.some((l) => l.productoId === p.id)) lineas.push({ productoId: p.id, cantidad: Math.max(0, stock), costo: p.costo ?? null });
+    }
+    if (opts && opts.localId && lineas.length) {
+      const fecha = opts.fecha || util.today();
+      const prev = db.reportes.find((r) => r.tipo === "INVENTARIO" && r.localId === opts.localId && r.hasta === fecha && r.importado);
+      const doc = { id: prev ? prev.id : util.uid(), tipo: "INVENTARIO", localId: opts.localId, desde: fecha, hasta: fecha, estado: "CONFIRMADO", importado: true, obs: `Stock importado de ${opts.archivo || "Excel"}`, lineas, creado: prev ? prev.creado : util.now() };
+      if (prev) db.reportes[db.reportes.indexOf(prev)] = doc; else db.reportes.push(doc);
+      res.conteo = doc; res.lineas = lineas.length;
+    }
+    return res;
+  }
+  /** Siguiente ID libre para un producto nuevo. */
+  const nextRef = (db) => Math.max(0, ...db.productos.map((p) => Number(p.ref) || 0)) + 1;
+  /** Código de barras de 10 dígitos que no se repite. */
+  function newCode(db) {
+    const used = new Set(db.productos.map((p) => String(p.codigo)));
+    for (;;) { const c = String(Math.floor(1e9 + Math.random() * 9e9)); if (!used.has(c)) return c; }
+  }
+
+  PPX.cat = { rowsFromSheet, importRows, nextRef, newCode, norm };
+})(window.PPX);
+
+/* =============================================================
+   Pagos programados (arriendo, internet, proveedores…): cuándo
+   vencen y cuánto falta. El aviso aparece desde 3 días antes.
+   ============================================================= */
+(function (PPX) {
+  "use strict";
+  const { util } = PPX;
+  const AVISO_DIAS = 3;
+  const FRECUENCIAS = { UNICA: "Una sola vez", SEMANAL: "Cada semana", QUINCENAL: "Cada 15 días", MENSUAL: "Cada mes", ANUAL: "Cada año" };
+  const dayDiff = (a, b) => Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 864e5);
+  const clampDay = (y, m, d) => { const last = new Date(y, m + 1, 0).getDate(); return util.iso(new Date(y, m, Math.min(d, last))); };
+  /** Próxima fecha después de pagar. */
+  function siguiente(p, desde) {
+    const d = new Date(desde + "T12:00:00"), dia = p.dia || d.getDate();
+    if (p.frecuencia === "SEMANAL") return util.addDays(desde, 7);
+    if (p.frecuencia === "QUINCENAL") return util.addDays(desde, 15);
+    if (p.frecuencia === "MENSUAL") return clampDay(d.getFullYear(), d.getMonth() + 1, dia);
+    if (p.frecuencia === "ANUAL") return clampDay(d.getFullYear() + 1, d.getMonth(), dia);
+    return null;
+  }
+  /** Días que faltan (negativo = vencido). */
+  const faltan = (p, hoy) => dayDiff(hoy || util.today(), p.proximo);
+  const pendientes = (db, hoy) => (db.pagos || []).filter((p) => p.activo !== false && p.proximo && faltan(p, hoy) <= AVISO_DIAS).sort((a, b) => a.proximo.localeCompare(b.proximo));
+  const estadoTxt = (d) => (d < 0 ? `Vencido hace ${-d} día${d === -1 ? "" : "s"}` : d === 0 ? "Vence hoy" : d === 1 ? "Vence mañana" : `Faltan ${d} días`);
+  PPX.pagos = { AVISO_DIAS, FRECUENCIAS, siguiente, faltan, pendientes, estadoTxt };
 })(window.PPX);
