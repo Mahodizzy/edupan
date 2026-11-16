@@ -248,6 +248,9 @@ window.PPX = window.PPX || {};
   ].map(([id, nombre]) => ({ id, nombre, tipo: "ingreso", activo: true }));
   const SUELDOS = { id: "sueldos", nombre: "Sueldos y beneficios", activo: true, sistema: true };
   const SIN = { id: "", nombre: "Sin detallar", activo: true, sistema: true };
+  /** Categorías del sistema para lo que se paga al personal (las llena Personal, no se eligen a mano). */
+  const SUELDO_CATS = { sueldos: "Sueldos y adelantos", iess: "Aportes al IESS", beneficios: "Décimos y fondos de reserva" };
+  const SUELDO_IDS = Object.keys(SUELDO_CATS);
   /** Valores 2026 editables en Personal → Configuración. SBU 2026: USD 482. */
   const NOMINA = () => ({ sbu: 482, iessPersonal: 9.45, iessPatronal: 12.15, fondos: 8.33, horasMes: 240 });
 
@@ -272,12 +275,8 @@ window.PPX = window.PPX || {};
     const out = [];
     for (const r of cajaIn(db, range, localId)) r.lineas.forEach((l, i) => num(l.monto) && out.push({ fecha: r.hasta, localId: r.localId, categoriaId: l.categoriaId || "", monto: num(l.monto), detalle: l.detalle || "", origen: "caja", r, i, pagado: true }));
     for (const r of gastosIn(db, range, localId)) r.lineas.forEach((l, i) => out.push({ fecha: r.hasta, localId: r.localId, categoriaId: l.categoriaId || "", monto: num(l.monto), detalle: l.detalle || "", origen: "gasto", r, i, pagado: r.pagado !== false, proveedor: r.proveedor || "" }));
-    // Un rol cuenta en proporción a los días de su período que caen dentro del rango consultado
-    for (const r of rolesIn(db, range, localId)) {
-      const dias = dayDiff(r.desde, r.hasta) + 1, en = overlapDays(r.desde, r.hasta, range[0], range[1]), parte = en / dias;
-      out.push({ fecha: r.hasta < range[1] ? r.hasta : range[1], localId: r.localId, categoriaId: "sueldos", monto: r2(rolTotals(r).costo * parte), detalle: `Rol de pagos ${r.periodoTxt || ""} · ${r.lineas.length} trabajador${r.lineas.length === 1 ? "" : "es"}${parte < 1 ? ` · ${en} de ${dias} días` : ""}`, origen: "rol", r, pagado: true });
-    }
-    out.push(...sueldosEstimados(db, range, localId));
+    // Los sueldos cuentan el día en que se pagan: el pago del rol y los adelantos quedan como
+    // egresos (categorías de sueldos) en el reporte diario de esa fecha. Así no se cuentan dos veces.
     return out;
   }
 
@@ -317,8 +316,7 @@ window.PPX = window.PPX || {};
     const s = { ingresos: 0, caja: 0, gastos: 0, sueldos: 0, sueldosEst: 0, egresos: 0, utilidad: 0, sinDetallar: 0, porPagar: 0, dias: new Set(reales.map((r) => r.hasta)).size, reportes: reales.length };
     for (const r of cajas) s.ingresos += num(r.ingresos);
     for (const e of eg) {
-      s[e.origen === "rol" || e.origen === "estimado" ? "sueldos" : "caja"] += e.monto; // los gastos sueltos cuentan como egresos del día
-      if (e.origen === "estimado") s.sueldosEst += e.monto;
+      s[SUELDO_IDS.includes(e.categoriaId) ? "sueldos" : "caja"] += e.monto; // los gastos sueltos cuentan como egresos del día
       if (!e.categoriaId) s.sinDetallar += e.monto;
       if (!e.pagado) s.porPagar += e.monto;
     }
@@ -356,6 +354,13 @@ window.PPX = window.PPX || {};
   const lastDay = (mes) => { const [y, m] = mes.split("-").map(Number); return util.iso(new Date(y, m, 0)); };
   const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
   /** tramo: "M" mes completo, "Q1" del 1 al 15, "Q2" del 16 al fin de mes. */
+  /** Período de un rol. tramo: M (mes), Q1/Q2 (quincenas), S (semana desde «desde»), D (días de «desde» a «hasta»). */
+  function periodoRol(o) {
+    if (o.tramo === "S") { const h = util.addDays(o.desde, 6); return { desde: o.desde, hasta: h, dias: 7, txt: `Semana del ${fechaTxt(o.desde)} al ${fechaTxt(h)}` }; }
+    if (o.tramo === "D") { const n = Math.round((new Date(o.hasta + "T12:00:00") - new Date(o.desde + "T12:00:00")) / 864e5) + 1; return { desde: o.desde, hasta: o.hasta, dias: n, txt: n === 1 ? `Día ${fechaTxt(o.desde)}` : `Días del ${fechaTxt(o.desde)} al ${fechaTxt(o.hasta)}` }; }
+    return periodo(o.mes, o.tramo);
+  }
+  const fechaTxt = (d) => `${Number(d.slice(8))} ${MESES[Number(d.slice(5, 7)) - 1].slice(0, 3)} ${d.slice(0, 4)}`;
   function periodo(mes, tramo) {
     const fin = lastDay(mes), m = MESES[Number(mes.slice(5, 7)) - 1] + " " + mes.slice(0, 4);
     if (tramo === "Q1") return { desde: mes + "-01", hasta: mes + "-15", dias: 15, txt: "1.ª quincena de " + m };
@@ -370,11 +375,13 @@ window.PPX = window.PPX || {};
    * Costo para la empresa: ingresos + aporte patronal + décimo tercero (1/12) + décimo cuarto (SBU/12)
    * + fondos de reserva (desde el año de trabajo). Cada beneficio cuenta solo si el trabajador lo recibe.
    */
-  function rolLinea(e, inp, cfg, tramo, hasta) {
-    const dp = tramo === "M" ? 30 : 15, base = num(e.sueldo) * (dp / 30);
+  function rolLinea(e, inp, cfg, tramo, hasta, diasPeriodo) {
+    // Valor de un día: el pago diario de quien cobra por día, o el sueldo mensual ÷ 30
+    const dp = diasPeriodo || (tramo === "M" ? 30 : tramo === "Q1" || tramo === "Q2" ? 15 : tramo === "S" ? 7 : 1);
+    const sueldoMes = e.frecuencia === "DIARIO" && num(e.pagoDia) ? num(e.pagoDia) * 30 : num(e.sueldo), porDia = sueldoMes / 30;
     const dias = Math.min(dp, Math.max(0, inp.dias === "" || inp.dias == null ? dp : num(inp.dias)));
-    const ganado = base * (dias / dp);
-    const vh = num(e.sueldo) / (num(cfg.horasMes) || 240);
+    const ganado = porDia * dias;
+    const vh = sueldoMes / (num(cfg.horasMes) || 240);
     const extras = vh * 1.5 * num(inp.h50) + vh * 2 * num(inp.h100);
     const total = ganado + extras + num(inp.bonos);
     const iessP = e.iess ? (total * num(cfg.iessPersonal)) / 100 : 0;
@@ -389,14 +396,25 @@ window.PPX = window.PPX || {};
     const desc = R(I + A + O);
     const neto = R(T - desc + (mens ? D13 + D14 : 0) + (fondosRol ? FO : 0));
     return {
-      empleadoId: e.id, nombre: e.nombre, cargo: e.cargo || "", sueldo: R(num(e.sueldo)), iessAfiliado: !!e.iess, decimosMensual: mens,
+      empleadoId: e.id, nombre: e.nombre, cargo: e.cargo || "", sueldo: R(sueldoMes), frecuencia: e.frecuencia || "MENSUAL", pagoDia: e.frecuencia === "DIARIO" ? R(porDia) : null, iessAfiliado: !!e.iess, decimosMensual: mens,
       dias, h50: num(inp.h50), h100: num(inp.h100), bonos: R(num(inp.bonos)), anticipos: A, otros: O, nota: inp.nota || "",
       ganado: R(ganado), extras: R(extras), total: T, iessP: I, desc, neto,
-      patronal: P, d13: D13, d14: D14, fondos: FO, vac: 0, costo: R(T + P + D13 + D14 + FO),
+      patronal: P, d13: D13, d14: D14, fondos: FO, fondosEnRol: fondosRol, vac: 0, costo: R(T + P + D13 + D14 + FO),
     };
   }
 
-  PPX.fin = { overlapDays, sueldosEstimados, CATEGORIAS, CATEGORIAS_ING, ingresosPorCategoria, SUELDOS, SIN, NOMINA, cajaIn, gastosIn, rolesIn, cajaEgresos, rolTotals, egresos, summary, byCategoria, series, periodo, rolLinea, MESES, lastDay };
+  /** Cuánto se paga al registrar el pago de un rol: neto a los trabajadores, aportes al IESS y beneficios que no van en el rol. */
+  function rolPagoPartes(r) {
+    const p = { neto: 0, iess: 0, beneficios: 0 };
+    for (const l of r.lineas) {
+      // Los fondos de reserva que no van en el rol se depositan al IESS con los aportes
+      p.neto += l.neto; p.iess += l.iessP + l.patronal + (l.fondosEnRol === false ? l.fondos : 0);
+      p.beneficios += l.decimosMensual ? 0 : l.d13 + l.d14;
+    }
+    for (const k in p) p[k] = r2(p[k]);
+    return p;
+  }
+  PPX.fin = { SUELDO_CATS, SUELDO_IDS, periodoRol, rolPagoPartes, overlapDays, sueldosEstimados, CATEGORIAS, CATEGORIAS_ING, ingresosPorCategoria, SUELDOS, SIN, NOMINA, cajaIn, gastosIn, rolesIn, cajaEgresos, rolTotals, egresos, summary, byCategoria, series, periodo, rolLinea, MESES, lastDay };
 })(window.PPX);
 
 /* =============================================================

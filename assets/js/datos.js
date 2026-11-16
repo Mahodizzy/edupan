@@ -41,6 +41,7 @@
     db.empleados.forEach((e) => { if (e.decimos === undefined) e.decimos = true; if (e.fondos === undefined) e.fondos = true; });
     if (!Array.isArray(db.fijos)) db.fijos = [];
     if (!Array.isArray(db.pagos)) db.pagos = [];
+    if (!Array.isArray(db.adelantos)) db.adelantos = [];
     if (!db.categorias.some((c) => c.id === "proveedores")) db.categorias.push({ id: "proveedores", nombre: "Pago a proveedores", tipo: "egreso", activo: true });
     db.nomina = Object.assign(F.NOMINA(), db.nomina || {});
     return db;
@@ -50,7 +51,7 @@
   function empty() {
     return {
       version: 4, reportes: [], productos: [],
-      locales: LOCALES(), categorias: PPX.fin.CATEGORIAS(), empleados: [], fijos: [], pagos: [], nomina: PPX.fin.NOMINA(),
+      locales: LOCALES(), categorias: PPX.fin.CATEGORIAS(), empleados: [], fijos: [], pagos: [], adelantos: [], nomina: PPX.fin.NOMINA(),
       usuarios: [{ id: "ely", nombre: ADMIN_NAME, email: ADMIN_EMAIL, rol: "ADMINISTRADORA", activo: true }],
       auditoria: [{ id: util.uid(), fecha: util.now(), usuario: "Sistema", accion: "Sistema iniciado", detalle: "Locales Matriz, Sucursal 1 y Sucursal 2 creados" }],
     };
@@ -95,9 +96,22 @@
       const per = F.periodo(mes, "M");
       const lineas = empleados.filter((e) => e.localId === id && e.ingreso <= per.hasta).map((e, i) => F.rolLinea(e, { dias: 30, h50: i === 0 ? 6 : 0, bonos: 0, anticipos: i === 2 ? 50 : 0 }, F.NOMINA(), "M", per.hasta));
       doc({ tipo: "ROL", localId: id, desde: per.desde, hasta: per.hasta, mes, tramo: "M", periodoTxt: per.txt, lineas, aprobado: util.now() });
+      // Se paga el día siguiente al cierre: neto a los trabajadores y aportes al IESS, en el reporte diario de ese día
+      const rol = reportes[reportes.length - 1], fecha = util.addDays(per.hasta, 1), partes = F.rolPagoPartes(rol);
+      let c = cajas.get(fecha + "|" + id);
+      const ls = [{ categoriaId: "sueldos", monto: partes.neto, rolId: rol.id, detalle: "Rol " + per.txt }].concat(partes.iess ? [{ categoriaId: "iess", monto: partes.iess, rolId: rol.id, detalle: "Aportes IESS · rol " + per.txt }] : []);
+      if (c) c.lineas.push(...ls); else { doc({ tipo: "CAJA", localId: id, desde: fecha, hasta: fecha, ingresos: 0, ingLineas: [], lineas: ls, soloPagos: true }); }
+      rol.pago = { fecha, ...partes, registrado: util.now() };
     }
+    // Un empleado semanal y uno diario, y un adelanto pendiente de descontar
+    empleados.push(E("Rosa Quinde", "suc1", "Ayudante (semanal)", 482, "2026-03-02", { frecuencia: "SEMANAL" }), E("Kevin Mora", "matriz", "Repartidor (por día)", 600, "2026-08-01", { frecuencia: "DIARIO", pagoDia: 20, iess: false, decimos: false, fondos: false }));
+    const ad = { id: util.uid(), empleadoId: empleados[2].id, tipo: "ADELANTO", fecha: util.addDays(t, -6), monto: 40, motivo: "Adelanto de quincena", rolId: null, ejemplo: true };
+    const ds = { id: util.uid(), empleadoId: empleados[2].id, tipo: "DESCUENTO", fecha: util.addDays(t, -3), monto: 5.5, motivo: "Faltante de caja del sábado", rolId: null, ejemplo: true };
+    const cAd = cajas.get(ad.fecha + "|matriz");
+    if (cAd) cAd.lineas.push({ categoriaId: "sueldos", monto: 40, movId: ad.id, detalle: "Adelanto a " + empleados[2].nombre });
+    const adelantos = [ad, ds];
     const categorias = F.CATEGORIAS();
-    return { reportes, categorias, empleados, fijos };
+    return { reportes, categorias, empleados, fijos, adelantos };
   }
 
   /** Datos de ejemplo (solo en la vista previa): 10 productos y 10 semanas de reportes por local. */
@@ -187,7 +201,7 @@
     const fin = seedFinanzas(r, lastSunday);
     reportes.push(...fin.reportes);
     return {
-      version: 4, locales, reportes, categorias: fin.categorias, empleados: fin.empleados, fijos: fin.fijos, nomina: PPX.fin.NOMINA(),
+      version: 4, locales, reportes, categorias: fin.categorias, empleados: fin.empleados, fijos: fin.fijos, adelantos: fin.adelantos, nomina: PPX.fin.NOMINA(),
       productos: productos.map(({ base, pas, origen, ...p }) => p),
       usuarios: [{ id: "ely", nombre: ADMIN_NAME, email: ADMIN_EMAIL, rol: "ADMINISTRADORA", activo: true }],
       auditoria: [{ id: util.uid(), fecha: util.now(), usuario: "Sistema", accion: "Datos de ejemplo cargados", detalle: "11 productos y 10 semanas de entradas, ventas y pérdidas por local" }],
@@ -272,7 +286,7 @@
     (acc.lectores || []).forEach((e) => out.push({ id: e, nombre: nombres[e] || e, email: e, rol: "LECTURA", activo: true }));
     return out;
   }
-  const CAT_KEYS = ["productos", "locales", "categorias", "empleados", "fijos", "nomina", "pagos"];
+  const CAT_KEYS = ["productos", "locales", "categorias", "empleados", "fijos", "nomina", "pagos", "adelantos"];
   const catalogOf = (db) => plain(Object.assign({ version: 4, ultimoRespaldo: db.ultimoRespaldo || null }, ...CAT_KEYS.map((k) => ({ [k]: db[k] }))));
   const applyCatalog = (db, c) => { CAT_KEYS.forEach((k) => { if (c[k] !== undefined) db[k] = c[k]; }); db.ultimoRespaldo = c.ultimoRespaldo || null; return migrate(db); };
 

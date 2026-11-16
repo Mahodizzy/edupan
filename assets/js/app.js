@@ -175,7 +175,7 @@
         ${mark()}
         <div class="right">${npend ? `<button class="icon-btn bell" data-f="pago-pop" aria-label="${npend} pagos por hacer">${ICON.pagos}<em class="badge">${npend}</em></button>` : ""}${themeToggle(true)}<span class="pill ${isAdmin() ? "gold" : "neutral"}">${role}</span><button class="icon-btn" data-act="logout" aria-label="Cerrar sesión">${ICON.out}</button></div>
       </header>
-      <main class="main"><div class="wrap" id="view"></div></main>
+      <main class="main"><div class="wrap" id="view"></div><footer class="site-foot">EduPan Panaderías · © ${new Date().getFullYear()} · Diseñado y desarrollado por <b>Maho Studio Dev</b></footer></main>
       <nav class="tabbar" aria-label="Secciones">${tabs.map(([k, t]) => link(k, t)).join("")}</nav>
       <span id="sync" class="sync" role="status" hidden></span>
     </div>`;
@@ -245,7 +245,7 @@
     render();
   }
   const GOOGLE_G = `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>`;
-  const shell = (inner) => `<div class="login"><div class="login-theme">${themeToggle(true)}</div><div class="login-card">${inner}</div></div>`;
+  const shell = (inner) => `<div class="login"><div class="login-theme">${themeToggle(true)}</div><div class="login-card">${inner}</div><p class="login-sign">Diseñado y desarrollado por <b>Maho Studio Dev</b></p></div>`;
   const note = (m) => (m ? `<div class="note ${m.ok ? "good" : "bad"}" role="${m.ok ? "status" : "alert"}">${esc(m.t)}</div>` : "");
 
   function renderLogin(err) {
@@ -262,6 +262,7 @@
         <div class="divider"></div>
         <p class="login-foot">Vista previa: vale cualquier contraseña de 6 caracteres o más. En el sistema real el acceso lo controla Firebase (correo o Google).</p>
       </form>
+      <p class="login-sign">Diseñado y desarrollado por <b>Maho Studio Dev</b></p>
     </div>`;
     $("#lg-pass").focus();
     $("#login-form").addEventListener("submit", (e) => {
@@ -626,7 +627,7 @@
     <section class="card" aria-label="Para revisar">
       <div class="card-head"><h2>Para revisar</h2></div>
       <div class="alerts">
-        ${!data.DEMO && isAdmin() && db.reportes.length && (backupDays() === null || backupDays() > 7) ? alert("warn", "clock", `<b>Respaldo semanal pendiente:</b> ${db.ultimoRespaldo ? `el último fue hace ${backupDays()} días` : "aún no has descargado ninguno"}. Los datos están en la nube; el respaldo es un seguro extra. <a href="#ajustes">Ir a Ajustes</a>`) : ""}
+        ${!data.DEMO && isAdmin() && db.reportes.length && (backupDays() === null || backupDays() > 7) ? alert("warn", "clock", `<b>Respaldo semanal pendiente:</b> ${ultimoRespaldoAny() ? `el último fue hace ${backupDays()} días` : "aún no has descargado ninguno"}. Los datos están en la nube; el respaldo es un seguro extra. <a href="#ajustes">Ir a Ajustes</a>`) : ""}
         ${borradores.map((r) => alert("warn", "clock", `<b>${MOV[r.tipo].label} sin confirmar:</b> ${esc(local(r.localId).nombre)}, ${fmt.period(r.desde, r.hasta)}. No cuenta hasta guardarlo. <a href="#${ROUTE_OF[r.tipo]}" data-route="${ROUTE_OF[r.tipo]}" data-open="${r.id}">Abrir</a>`)).join("")}
         ${stock.negativo ? alert("bad", "alert", `<b>${stock.negativo} producto${stock.negativo > 1 ? "s" : ""} con más salidas que entradas:</b> ${stock.negTxt}. Falta registrar alguna entrada o producción. <a href="#inventario">Ver inventario</a>`) : ""}
         ${stock.agotado ? alert("bad", "warn", `<b>${stock.agotado} producto${stock.agotado > 1 ? "s" : ""} agotado${stock.agotado > 1 ? "s" : ""}:</b> ${stock.agotadoTxt}. <a href="#inventario">Ver inventario</a>`) : ""}
@@ -1610,7 +1611,7 @@
           <tbody>${rowsPrev.map(([lbl, k, kind]) => `<tr><td><b>${lbl}</b></td>${d.map((x) => `<td class="r num">${cell(x[k], kind)}</td>`).join("")}<td class="r num"><b>${cell(sum(k), kind)}</b></td></tr>`).join("")}
             <tr><td><b>Margen sobre ingresos</b></td>${d.map((x) => `<td class="r num">${fmt.pct(x.ingresos ? x.utilidad / x.ingresos : NaN)}</td>`).join("")}<td class="r num"><b>${fmt.pct(sum("ingresos") ? sum("utilidad") / sum("ingresos") : NaN)}</b></td></tr>
           </tbody></table></div>` : `<div class="empty">Elige al menos un local.</div>`}
-        <div class="note info"><b>Para enviárselo a tu jefe:</b> descarga el Excel y adjúntalo a un correo o a WhatsApp. El envío automático por correo llega con la versión en línea.</div>
+        <div class="note info"><b>Para enviárselo a tu jefe:</b> descarga el Excel y adjúntalo a un correo o a WhatsApp. Si activaste los envíos automáticos, el informe del mes anterior llega solo por correo cada día 1 (ver Ajustes).</div>
         ${recientes.length ? `<div><h3 style="margin-bottom:8px">Últimos informes</h3><div class="alerts">${recientes.map((a) => `<div class="alert"><span class="ic">${ICON.informes}</span><span><b>${fmt.stamp(a.fecha)}</b> · ${esc(a.detalle)}</span></div>`).join("")}</div></div>` : ""}
       </section>
     </div>`;
@@ -1638,7 +1639,7 @@
   const mesTxt = (mes) => { const t = F.MESES[Number(mes.slice(5, 7)) - 1]; return t.charAt(0).toUpperCase() + t.slice(1) + " " + mes.slice(0, 4); };
   const addMes = (mes, k) => { const [y, m] = mes.split("-").map(Number); return iso(new Date(y, m - 1 + k, 1)).slice(0, 7); };
   const mesRange = (mes) => [mes + "-01", F.lastDay(mes)];
-  const catById = (id) => (id === "" || id == null ? F.SIN : id === "sueldos" ? F.SUELDOS : db.categorias.find((c) => c.id === id) || { id, nombre: id, activo: false });
+  const catById = (id) => (id === "" || id == null ? F.SIN : F.SUELDO_CATS[id] ? { id, nombre: F.SUELDO_CATS[id], activo: true, sistema: true } : db.categorias.find((c) => c.id === id) || { id, nombre: id, activo: false });
   const catName = (id) => catById(id).nombre;
   const CAT_COLS = ["var(--s1)", "var(--s2)", "#5B6FD6", "var(--teal)", "#8E7CC3", "#E08A3C", "#C9A227", "#D96C8A", "#6BA368", "#9C7A5B", "#5C8DB8", "var(--muted)"];
   /** Segmentos de la dona de categorías: las 7 mayores y el resto junto. */
@@ -1717,7 +1718,7 @@
     const ro = !isAdmin();
     const r0 = id ? db.reportes.find((x) => x.id === id) : null;
     const blank = () => ({ categoriaId: "", monto: "", nueva: "" });
-    const fromLines = (ls) => (ls && ls.length ? ls.map((l) => ({ categoriaId: l.categoriaId || "", monto: showNum(l.monto), nueva: "", pagoId: l.pagoId || null, detalle: l.detalle || "" })) : [blank()]);
+    const fromLines = (ls) => (ls && ls.length ? ls.map((l) => ({ categoriaId: l.categoriaId || "", monto: showNum(l.monto), nueva: "", pagoId: l.pagoId || null, rolId: l.rolId || null, movId: l.movId || null, detalle: l.detalle || "" })) : [blank()]);
     const modoOf = (ls) => (ls.length > 1 || ls.some((l) => l.categoriaId) ? "cat" : "total");
     const ing0 = r0 ? fromLines(r0.ingLineas && r0.ingLineas.length ? r0.ingLineas : [{ categoriaId: "", monto: r0.ingresos }]) : [blank()];
     const eg0 = r0 ? fromLines(r0.lineas) : [blank()];
@@ -1746,11 +1747,11 @@
               <select class="input" data-cl="${k}:${i}:categoriaId" aria-label="Categoría" ${ro ? "disabled" : ""}>${opts(k, l.categoriaId)}</select>
               <input class="input num" data-cl="${k}:${i}:monto" inputmode="decimal" placeholder="0,00" value="${esc(l.monto)}" aria-label="Monto" ${ro ? "readonly" : ""}>
               ${ro ? "" : `<button type="button" class="icon-btn" data-cdel="${k}:${i}" aria-label="Quitar línea">${ICON.x}</button>`}
-              ${l.pagoId ? `<span class="hint pago-tag">${ICON.pagos} Pago programado: ${esc(l.detalle || "")}</span>` : ""}
+              ${l.pagoId ? `<span class="hint pago-tag">${ICON.pagos} Pago programado: ${esc(l.detalle || "")}</span>` : l.rolId ? `<span class="hint pago-tag">${ICON.personal} Pago del ${esc(l.detalle || "rol de pagos")}</span>` : l.movId ? `<span class="hint pago-tag">${ICON.personal} ${esc(l.detalle || "Adelanto de sueldo")}</span>` : ""}
               ${l.categoriaId === "__nueva" ? `<input class="input nueva-cat" data-cl="${k}:${i}:nueva" maxlength="50" placeholder="Nombre de la nueva categoría (${S.ej.toLowerCase()})" value="${esc(l.nueva)}" aria-label="Nueva categoría">` : ""}
             </div>`).join("")}</div>
             ${ro ? "" : `<div><button type="button" class="btn ghost" data-cadd="${k}">${ICON.plus} Agregar ${k === "ing" ? "ingreso" : "egreso"}</button></div>`}
-            ${k === "eg" && !ro ? `<span class="hint">Los sueldos no van aquí: se cuentan solos al aprobar el rol de pagos en Personal.</span>` : ""}`}
+            ${k === "eg" && !ro ? `<span class="hint">Los sueldos y adelantos se registran en Personal y aparecen aquí solos el día que se pagan.</span>` : ""}`}
       </div>`;
     };
     const sumHtml = () => { const i = sum("ing"), e = sum("eg"), q = i - e; return `<div><span>Ingresos</span><b>${fmt.money(i)}</b></div><div><span>Egresos</span><b style="color:var(--bad)">− ${fmt.money(e)}</b></div><div class="q"><span>Queda</span><b style="color:${q >= 0 ? "var(--good)" : "var(--bad)"}">${fmt.money(q)}</b></div>`; };
@@ -1813,7 +1814,7 @@
             if (!n) { errs.push(`Escribe el nombre de la nueva categoría de ${k === "ing" ? "ingreso" : "egreso"}.`); continue; }
             nuevas.push({ k, n, l }); cat = "__nueva:" + n;
           }
-          if (m > 0) out.push(Object.assign({ categoriaId: cat, monto: round2(m) }, l.pagoId && st[k].modo === "cat" ? { pagoId: l.pagoId, detalle: l.detalle } : {}));
+          if (m > 0) out.push(Object.assign({ categoriaId: cat, monto: round2(m) }, st[k].modo === "cat" && (l.pagoId || l.rolId || l.movId) ? { pagoId: l.pagoId || undefined, rolId: l.rolId || undefined, movId: l.movId || undefined, detalle: l.detalle } : {}));
         }
         return out;
       };
@@ -1870,38 +1871,59 @@
   }
 
   /* ---------- Personal y roles de pago ---------- */
-  const FREQ = { MENSUAL: "Mensual", QUINCENAL: "Quincenal" };
-  const costoMes = (e) => F.rolLinea(e, { dias: 30 }, db.nomina, "M", today()).costo;
+  const FREQ = { DIARIO: "Diario", SEMANAL: "Semanal", QUINCENAL: "Quincenal", MENSUAL: "Mensual" };
+  const TRAMO_FREQ = { M: "MENSUAL", Q1: "QUINCENAL", Q2: "QUINCENAL", S: "SEMANAL", D: "DIARIO" };
+  const costoMes = (e) => F.rolLinea(e, { dias: 30 }, db.nomina, "M", today(), 30).costo;
+  const sueldoTxt = (e) => (e.frecuencia === "DIARIO" && e.pagoDia ? `${fmt.money(e.pagoDia)} por día` : fmt.money(e.sueldo));
+  const empleado = (id) => db.empleados.find((x) => x.id === id);
+  const movPend = (empId, hasta) => db.adelantos.filter((m) => m.empleadoId === empId && !m.rolId && (!hasta || m.fecha <= hasta));
+  /** Agrega una línea al reporte diario del local (lo crea si ese día aún no tiene reporte). */
+  function lineaEnCaja(localId, fecha, linea) {
+    let c = db.reportes.find((r) => r.tipo === "CAJA" && r.localId === localId && r.hasta === fecha);
+    if (c) c.lineas.push(linea);
+    else { c = { id: uid(), tipo: "CAJA", localId, desde: fecha, hasta: fecha, ingresos: 0, ingLineas: [], lineas: [linea], estado: "CONFIRMADO", obs: "", soloPagos: true, creado: util.now() }; db.reportes.push(c); }
+    return c;
+  }
+  /** Quita del reporte diario las líneas que cumplen la condición (y el reporte si solo tenía eso). */
+  function quitarDeCaja(pred) {
+    for (const r of db.reportes.filter((x) => x.tipo === "CAJA" && x.lineas.some(pred))) {
+      r.lineas = r.lineas.filter((l) => !pred(l));
+      if (r.soloPagos && !r.lineas.length) db.reportes = db.reportes.filter((x) => x !== r);
+    }
+  }
+
   function viewPersonal() {
     const tab = ui.perTab || "trabajadores";
     if (tab === "roles" && ui.rolDraft) return viewRolEditor();
     if (tab === "roles" && ui.viewId) { const r = db.reportes.find((x) => x.id === ui.viewId && x.tipo === "ROL"); if (r) return viewRolDetalle(r); }
     const head = `<div class="page-head">
-      <div class="lead"><span class="eyebrow">Trabajadores de los 3 locales</span><h1>Personal y roles de pago</h1><p>Sueldos, aportes al IESS y beneficios de ley. Al aprobar un rol, su costo entra como gasto del local.</p></div>
-      ${isAdmin() ? (tab === "trabajadores" ? `<button class="btn primary" data-f="emp-new">${ICON.plus} Nuevo trabajador</button>` : tab === "roles" ? `<button class="btn primary" data-f="rol-new">${ICON.plus} Nuevo rol de pagos</button>` : "") : ""}
+      <div class="lead"><span class="eyebrow">Trabajadores de los 3 locales</span><h1>Personal y roles de pago</h1><p>Sueldos, adelantos, descuentos, aportes al IESS y beneficios de ley. Lo que se paga se descuenta del reporte diario del día en que se paga.</p></div>
+      ${isAdmin() ? (tab === "trabajadores" ? `<button class="btn primary" data-f="emp-new">${ICON.plus} Nuevo trabajador</button>` : tab === "roles" ? `<button class="btn primary" data-f="rol-new">${ICON.plus} Nuevo rol de pagos</button>` : tab === "adelantos" ? `<button class="btn primary" data-f="mov-new">${ICON.plus} Registrar adelanto o descuento</button>` : "") : ""}
     </div>
-    ${ftabs("perTab", tab, [["trabajadores", "Trabajadores", "personal"], ["roles", "Roles de pago", "reportes"], ["config", "Valores de ley", "ajustes"]])}`;
+    ${ftabs("perTab", tab, [["trabajadores", "Trabajadores", "personal"], ["adelantos", "Adelantos y descuentos", "gastos"], ["roles", "Roles de pago", "reportes"], ["config", "Valores de ley", "ajustes"]])}`;
     if (tab === "roles") return head + viewRoles();
+    if (tab === "adelantos") return head + viewAdelantos();
     if (tab === "config") return head + viewNomina();
     const loc = ui.perLocal || "todos", ver = ui.perVer || "activos";
     const emps = db.empleados.filter((e) => (loc === "todos" || e.localId === loc) && (ver === "todos" || (ver === "activos") === (e.activo !== false))).sort((a, b) => locIdx(a.localId) - locIdx(b.localId) || a.nombre.localeCompare(b.nombre, "es"));
     const act = db.empleados.filter((e) => e.activo !== false && (loc === "todos" || e.localId === loc));
-    const sueldos = act.reduce((a, e) => a + (Number(e.sueldo) || 0), 0), costo = act.reduce((a, e) => a + costoMes(e), 0);
+    const costo = act.reduce((a, e) => a + costoMes(e), 0), sueldos = act.reduce((a, e) => a + F.rolLinea(e, { dias: 30 }, db.nomina, "M", today(), 30).total, 0);
     const anos = (d) => { const y = (new Date(today()) - new Date(d)) / (365.25 * 864e5); return y >= 1 ? `${Math.floor(y)} año${Math.floor(y) === 1 ? "" : "s"}` : `${Math.max(0, Math.floor(y * 12))} mes${Math.floor(y * 12) === 1 ? "" : "es"}`; };
     return head + `
     <div class="toolbar">${segLocal("perLocal", loc)}<div class="segmented" role="group" aria-label="Mostrar">${[["activos", "Activos"], ["inactivos", "Inactivos"], ["todos", "Todos"]].map(([k, x]) => `<button class="seg" aria-pressed="${ver === k}" data-f="set" data-key="perVer" data-v="${k}">${x}</button>`).join("")}</div></div>
     <section class="minis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
       <div class="mini"><span>Trabajadores activos</span><b class="num">${act.length}</b></div>
-      <div class="mini"><span>Sueldos al mes</span><b class="num">${fmt.money(sueldos)}</b></div>
+      <div class="mini"><span>Sueldos al mes (equivalente)</span><b class="num">${fmt.money(sueldos)}</b></div>
       <div class="mini"><span>Costo real al mes (con IESS y beneficios)</span><b class="num">${fmt.money(costo)}</b></div>
     </section>
     <section class="card">
       ${emps.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Nombre</th><th>Local</th><th class="hide-sm">Cargo</th><th class="r">Sueldo</th><th>Pago</th><th class="hide-sm">IESS</th><th class="hide-sm">Antigüedad</th><th class="r">Costo al mes</th></tr></thead>
-        <tbody>${emps.map((e) => `<tr class="click" tabindex="0" data-f="emp-edit" data-id="${e.id}"><td style="white-space:nowrap"><b>${esc(e.nombre)}</b>${e.activo === false ? ' <span class="pill neutral">Inactivo</span>' : ""}</td><td style="white-space:nowrap">${esc(local(e.localId).nombre)}</td><td class="hide-sm">${esc(e.cargo || "—")}</td>
-          <td class="r num">${fmt.money(e.sueldo)}</td><td>${FREQ[e.frecuencia]}</td><td class="hide-sm">${e.iess ? '<span class="pill good">Afiliado</span>' : '<span class="pill warn">No afiliado</span>'}${e.decimos === false ? ' <span class="pill neutral plain">Sin décimos</span>' : ""}</td><td class="hide-sm">${e.ingreso ? anos(e.ingreso) : "—"}</td><td class="r num"><b>${fmt.money(costoMes(e))}</b></td></tr>`).join("")}</tbody></table></div>`
+        <thead><tr><th>Nombre</th><th>Local</th><th class="hide-sm">Cargo</th><th class="r">Sueldo</th><th>Pago</th><th class="hide-sm">IESS</th><th class="hide-sm">Antigüedad</th><th class="r">Pendiente de descontar</th><th class="r">Costo al mes</th></tr></thead>
+        <tbody>${emps.map((e) => { const pend = movPend(e.id).reduce((a, m) => a + m.monto, 0); return `<tr class="click" tabindex="0" data-f="emp-edit" data-id="${e.id}"><td style="white-space:nowrap"><b>${esc(e.nombre)}</b>${e.activo === false ? ' <span class="pill neutral">Inactivo</span>' : ""}</td><td style="white-space:nowrap">${esc(local(e.localId).nombre)}</td><td class="hide-sm">${esc(e.cargo || "—")}</td>
+          <td class="r num">${sueldoTxt(e)}</td><td>${FREQ[e.frecuencia] || "Mensual"}</td><td class="hide-sm">${e.iess ? '<span class="pill good">Afiliado</span>' : '<span class="pill warn">No afiliado</span>'}${e.decimos === false ? ' <span class="pill neutral plain">Sin décimos</span>' : ""}</td><td class="hide-sm">${e.ingreso ? anos(e.ingreso) : "—"}</td>
+          <td class="r num">${pend ? `<span style="color:var(--bad)">${fmt.money(pend)}</span>` : "—"}</td><td class="r num"><b>${fmt.money(costoMes(e))}</b></td></tr>`; }).join("")}</tbody></table></div>`
         : `<div class="empty">No hay trabajadores con estos filtros.${isAdmin() ? " Agrega el primero con «Nuevo trabajador»." : ""}</div>`}
-      <p class="muted small" style="margin-top:12px">Costo al mes = sueldo + aporte patronal al IESS + décimo tercero + décimo cuarto + fondos de reserva, según lo que recibe cada trabajador. Los sueldos no se registran en el reporte diario: cuentan como egreso al aprobar el rol de pagos.</p>
+      <p class="muted small" style="margin-top:12px">Costo al mes = sueldo + aporte patronal al IESS + décimo tercero + décimo cuarto + fondos de reserva, según lo que recibe cada trabajador. «Pendiente de descontar» = adelantos y descuentos que se restarán en su próximo rol.</p>
     </section>`;
   }
 
@@ -1910,18 +1932,21 @@
     const e0 = id ? db.empleados.find((x) => x.id === id) : null;
     if (!e0 && ro) return;
     const v = e0 || { nombre: "", localId: ui.perLocal && ui.perLocal !== "todos" ? ui.perLocal : db.locales[0].id, cargo: "", sueldo: db.nomina.sbu, frecuencia: "MENSUAL", ingreso: today(), iess: true, decimos: true, decimosMensual: false, fondos: true, fondosEnRol: true, activo: true };
+    const monto0 = v.frecuencia === "DIARIO" && v.pagoDia ? v.pagoDia : v.sueldo;
     const { ov, close } = dialog(`<form class="dialog" id="emp-form" novalidate role="dialog" aria-modal="true" aria-labelledby="em-t">
       ${dlgHead("em-t", ro ? esc(v.nombre) : e0 ? "Editar trabajador" : "Nuevo trabajador")}
       <div class="field"><label for="em-nombre">Nombre completo</label><input class="input" id="em-nombre" maxlength="80" value="${esc(v.nombre)}" placeholder="Ej.: María Torres"></div>
       <div class="grid2"><div class="field"><label for="em-local">Local donde trabaja</label>${localSelect("em-local", v.localId)}</div>
         <div class="field"><label for="em-cargo">Cargo</label><input class="input" id="em-cargo" maxlength="60" value="${esc(v.cargo || "")}" placeholder="Ej.: Panadero, vendedora" list="em-cargos"><datalist id="em-cargos">${["Panadero", "Ayudante de panadería", "Pastelera", "Vendedora", "Cajera", "Repartidor"].map((x) => `<option value="${x}">`).join("")}</datalist></div></div>
-      <div class="grid2"><div class="field"><label for="em-sueldo">Sueldo mensual</label><input class="input num" id="em-sueldo" inputmode="decimal" value="${showNum(v.sueldo)}"><span class="hint">Salario básico 2026: ${fmt.money(db.nomina.sbu)}.</span></div>
-        <div class="field"><label for="em-freq">Se le paga</label><select class="input" id="em-freq">${Object.entries(FREQ).map(([k, x]) => `<option value="${k}" ${v.frecuencia === k ? "selected" : ""}>${x}</option>`).join("")}</select></div></div>
+      <div class="grid2">
+        <div class="field"><label for="em-freq">Se le paga</label><select class="input" id="em-freq">${Object.entries(FREQ).map(([k, x]) => `<option value="${k}" ${v.frecuencia === k ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        <div class="field"><label for="em-sueldo" id="em-sueldo-l">Sueldo mensual</label><input class="input num" id="em-sueldo" inputmode="decimal" value="${showNum(monto0)}"><span class="hint" id="em-sueldo-h"></span></div>
+      </div>
       <div class="field"><label for="em-ing">Fecha de ingreso</label><input class="input" type="date" id="em-ing" value="${v.ingreso || ""}" max="${today()}"><span class="hint">Para saber desde cuándo le corresponden fondos de reserva (al año).</span></div>
       <div class="checks-col">
         <label class="check-line"><input type="checkbox" id="em-iess" ${v.iess ? "checked" : ""}><span>Afiliado al IESS <span class="muted small">(se le descuenta el aporte personal y EduPan paga el patronal)</span></span></label>
         <label class="check-line"><input type="checkbox" id="em-dec" ${v.decimos !== false ? "checked" : ""}><span>Recibe décimo tercero y décimo cuarto</span></label>
-        <label class="check-line sub-check" id="em-decm-l" ${v.decimos !== false ? "" : "hidden"}><input type="checkbox" id="em-decm" ${v.decimosMensual ? "checked" : ""}><span>Se los pagan cada mes en el rol (mensualizados)</span></label>
+        <label class="check-line sub-check" id="em-decm-l" ${v.decimos !== false ? "" : "hidden"}><input type="checkbox" id="em-decm" ${v.decimosMensual ? "checked" : ""}><span>Se los pagan en cada rol (mensualizados)</span></label>
         <label class="check-line" id="em-fon-l"><input type="checkbox" id="em-fon" ${v.fondos !== false && v.iess ? "checked" : ""} ${v.iess ? "" : "disabled"}><span>Recibe fondos de reserva <span class="muted small">(con IESS, desde el primer año)</span></span></label>
         <label class="check-line sub-check" id="em-fonr-l" ${v.fondos !== false && v.iess ? "" : "hidden"}><input type="checkbox" id="em-fonr" ${v.fondosEnRol !== false ? "checked" : ""}><span>Se los pagan en el rol (si no, se depositan en el IESS)</span></label>
         ${e0 ? `<label class="check-line"><input type="checkbox" id="em-act" ${v.activo !== false ? "checked" : ""}><span>Trabajador activo</span></label>` : ""}
@@ -1932,82 +1957,177 @@
     </form>`);
     const f = $("#emp-form", ov);
     if (ro) f.querySelectorAll("input,select").forEach((x) => { x.disabled = true; });
-    const cur = () => ({ id: e0 ? e0.id : "x", nombre: $("#em-nombre", f).value.trim(), localId: $("#em-local", f).value, cargo: $("#em-cargo", f).value.trim(), sueldo: numOk($("#em-sueldo", f).value), frecuencia: $("#em-freq", f).value, ingreso: $("#em-ing", f).value, iess: $("#em-iess", f).checked, decimos: $("#em-dec", f).checked, decimosMensual: $("#em-dec", f).checked && $("#em-decm", f).checked, fondos: $("#em-iess", f).checked && $("#em-fon", f).checked, fondosEnRol: $("#em-fonr", f).checked, activo: e0 ? $("#em-act", f).checked : true });
+    const cur = () => {
+      const freq = $("#em-freq", f).value, monto = numOk($("#em-sueldo", f).value);
+      return { id: e0 ? e0.id : "x", nombre: $("#em-nombre", f).value.trim(), localId: $("#em-local", f).value, cargo: $("#em-cargo", f).value.trim(), frecuencia: freq,
+        sueldo: freq === "DIARIO" ? round2(monto * 30) : monto, pagoDia: freq === "DIARIO" ? monto : null, monto,
+        ingreso: $("#em-ing", f).value, iess: $("#em-iess", f).checked, decimos: $("#em-dec", f).checked, decimosMensual: $("#em-dec", f).checked && $("#em-decm", f).checked, fondos: $("#em-iess", f).checked && $("#em-fon", f).checked, fondosEnRol: $("#em-fonr", f).checked, activo: e0 ? $("#em-act", f).checked : true };
+    };
     const prev = () => {
-      // Opciones que dependen de otras
       const iess = $("#em-iess", f).checked;
       $("#em-fon", f).disabled = !iess || ro; if (!iess) $("#em-fon", f).checked = false;
       $("#em-decm-l", f).hidden = !$("#em-dec", f).checked;
       $("#em-fonr-l", f).hidden = !$("#em-fon", f).checked;
-      const e = cur(), box = $("#em-prev", f);
-      if (isNaN(e.sueldo) || e.sueldo <= 0) { box.textContent = "Escribe el sueldo para ver cuánto recibe y cuánto cuesta."; return; }
-      const l = F.rolLinea(e, { dias: 30 }, db.nomina, "M", today());
+      const e = cur(), box = $("#em-prev", f), diario = e.frecuencia === "DIARIO";
+      $("#em-sueldo-l", f).textContent = diario ? "Pago por día" : "Sueldo mensual";
+      const okM = !isNaN(e.monto) && e.monto > 0;
+      $("#em-sueldo-h", f).textContent = !okM ? "" : diario ? `Equivale a ${fmt.money(e.monto * 30)} al mes.` : e.frecuencia === "QUINCENAL" ? `Cada quincena: ${fmt.money(e.monto / 2)}.` : e.frecuencia === "SEMANAL" ? `Cada semana: ${fmt.money((e.monto / 30) * 7)} (7 días).` : `Salario básico 2026: ${fmt.money(db.nomina.sbu)}.`;
+      if (!okM) { box.textContent = diario ? "Escribe cuánto gana por día." : "Escribe el sueldo para ver cuánto recibe y cuánto cuesta."; return; }
+      const dp = { DIARIO: 1, SEMANAL: 7, QUINCENAL: 15, MENSUAL: 30 }[e.frecuencia], l = F.rolLinea(e, { dias: dp }, db.nomina, "D", today(), dp), lm = F.rolLinea(e, { dias: 30 }, db.nomina, "M", today(), 30);
       const anios = e.ingreso ? (new Date(today()) - new Date(e.ingreso)) / (365.25 * 864e5) : 0;
-      const partes = [[l.patronal, "aporte patronal IESS"], [l.d13, "décimo tercero"], [l.d14, "décimo cuarto"], [l.fondos, "fondos de reserva"]].filter(([x]) => x > 0);
-      box.innerHTML = `En un mes completo recibe <b>${fmt.money(l.neto)}</b>${l.iessP ? ` (con el descuento del IESS de ${fmt.money(l.iessP)})` : ""}${l.decimosMensual ? " incluidos los décimos" : ""}. `
-        + (partes.length ? `A EduPan le cuesta <b>${fmt.money(l.costo)}</b>: sueldo ${fmt.money(l.total)} + ${partes.map(([x, n]) => `${n} ${fmt.money(x)}`).join(" + ")}.` : `A EduPan le cuesta <b>${fmt.money(l.costo)}</b>: solo el sueldo, sin aportes ni beneficios.`)
+      const partes = [[lm.patronal, "aporte patronal IESS"], [lm.d13, "décimo tercero"], [lm.d14, "décimo cuarto"], [lm.fondos, "fondos de reserva"]].filter(([x]) => x > 0);
+      box.innerHTML = `${{ DIARIO: "Por cada día", SEMANAL: "Cada semana", QUINCENAL: "Cada quincena", MENSUAL: "Cada mes" }[e.frecuencia]} recibe <b>${fmt.money(l.neto)}</b>${l.iessP ? ` (con el descuento del IESS de ${fmt.money(l.iessP)})` : ""}${l.decimosMensual ? ", incluidos los décimos" : ""}. `
+        + (partes.length ? `En un mes, a EduPan le cuesta <b>${fmt.money(lm.costo)}</b>: sueldo ${fmt.money(lm.total)} + ${partes.map(([x, n]) => `${n} ${fmt.money(x)}`).join(" + ")}.` : `En un mes, a EduPan le cuesta <b>${fmt.money(lm.costo)}</b>: solo el sueldo, sin aportes ni beneficios.`)
         + (e.iess && e.fondos && anios < 1 ? `<br><span class="muted">Los fondos de reserva empiezan cuando cumpla un año de trabajo.</span>` : "");
-      if (e.sueldo < db.nomina.sbu) box.innerHTML += `<br><span style="color:var(--bad)">Ojo: es menos que el salario básico (${fmt.money(db.nomina.sbu)}) para jornada completa.</span>`;
+      if (lm.total < db.nomina.sbu && e.frecuencia !== "DIARIO") box.innerHTML += `<br><span style="color:var(--bad)">Ojo: es menos que el salario básico (${fmt.money(db.nomina.sbu)}) para jornada completa.</span>`;
     };
     f.addEventListener("input", prev); f.addEventListener("change", prev); prev();
     f.addEventListener("submit", (ev) => {
       ev.preventDefault(); if (ro) return;
       const e = cur(), errs = [];
       if (!e.nombre) errs.push("Escribe el nombre.");
-      if (isNaN(e.sueldo) || e.sueldo <= 0) errs.push("El sueldo debe ser mayor a 0.");
+      if (isNaN(e.monto) || e.monto <= 0) errs.push(e.frecuencia === "DIARIO" ? "El pago por día debe ser mayor a 0." : "El sueldo debe ser mayor a 0.");
       if (!e.ingreso) errs.push("Escribe la fecha de ingreso.");
       if (errs.length) { $("#em-err", f).innerHTML = errBox(errs); return; }
-      e.sueldo = round2(e.sueldo); e.nombre = e.nombre.replace(/\s+/g, " ");
-      if (e0) { const antes = e0.sueldo; Object.assign(e0, e, { id: e0.id, ejemplo: false }); audit("Trabajador editado", `${e.nombre} · ${local(e.localId).nombre} · sueldo ${fmt.money(antes)} → ${fmt.money(e.sueldo)}${e.activo ? "" : " · inactivo"}`); }
-      else { e.id = uid(); db.empleados.push(e); audit("Trabajador agregado", `${e.nombre} · ${local(e.localId).nombre} · ${e.cargo || "sin cargo"} · ${fmt.money(e.sueldo)}`); }
+      delete e.monto; e.sueldo = round2(e.sueldo); if (e.pagoDia) e.pagoDia = round2(e.pagoDia); e.nombre = e.nombre.replace(/\s+/g, " ");
+      if (e0) { const antes = sueldoTxt(e0); Object.assign(e0, e, { id: e0.id, ejemplo: false }); audit("Trabajador editado", `${e.nombre} · ${local(e.localId).nombre} · ${FREQ[e.frecuencia]} · ${antes} → ${sueldoTxt(e0)}${e.activo ? "" : " · inactivo"}`); }
+      else { e.id = uid(); db.empleados.push(e); audit("Trabajador agregado", `${e.nombre} · ${local(e.localId).nombre} · ${e.cargo || "sin cargo"} · ${FREQ[e.frecuencia]} · ${sueldoTxt(e)}`); }
       save(); close(); render(); toast("Trabajador guardado");
     });
     if (!ro) $("#em-nombre", f).focus();
   }
 
+  /* ---------- Adelantos y descuentos ---------- */
+  function viewAdelantos() {
+    const loc = ui.perLocal || "todos", est = ui.movEst || "pendientes";
+    const list = db.adelantos.filter((m) => { const e = empleado(m.empleadoId); return e && (loc === "todos" || e.localId === loc) && (est === "todos" || (est === "pendientes") === !m.rolId); })
+      .sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const pend = db.adelantos.filter((m) => !m.rolId), totA = pend.filter((m) => m.tipo === "ADELANTO").reduce((a, m) => a + m.monto, 0), totD = pend.filter((m) => m.tipo === "DESCUENTO").reduce((a, m) => a + m.monto, 0);
+    return `
+    <div class="toolbar">${segLocal("perLocal", loc)}<div class="segmented" role="group" aria-label="Estado">${[["pendientes", "Por descontar"], ["aplicados", "Ya descontados"], ["todos", "Todos"]].map(([k, x]) => `<button class="seg" aria-pressed="${est === k}" data-f="set" data-key="movEst" data-v="${k}">${x}</button>`).join("")}</div></div>
+    <section class="minis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="mini"><span>Adelantos por descontar</span><b class="num">${fmt.money(totA)}</b></div>
+      <div class="mini"><span>Descuentos por aplicar</span><b class="num">${fmt.money(totD)}</b></div>
+      <div class="mini"><span>Trabajadores con pendientes</span><b class="num">${new Set(pend.map((m) => m.empleadoId)).size}</b></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><div><h2>Adelantos y descuentos</h2><p class="muted small"><b>Adelanto:</b> dinero que se le da antes; sale del reporte diario ese día y se descuenta en su próximo rol. <b>Descuento:</b> se le resta del sueldo por un motivo (faltante, daño, falta…).</p></div></div>
+      ${list.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Trabajador</th><th>Tipo</th><th>Motivo</th><th class="r">Monto</th><th>Estado</th></tr></thead>
+        <tbody>${list.map((m) => { const e = empleado(m.empleadoId), r = m.rolId && db.reportes.find((x) => x.id === m.rolId); return `<tr class="click" tabindex="0" data-f="mov-edit" data-id="${m.id}"><td class="num" style="white-space:nowrap">${fmt.date(m.fecha)}</td><td><b>${esc(e.nombre)}</b><br><span class="muted small">${esc(local(e.localId).nombre)}</span></td>
+          <td>${m.tipo === "ADELANTO" ? '<span class="pill gold">Adelanto</span>' : '<span class="pill bad">Descuento</span>'}</td><td class="muted">${esc(m.motivo || "—")}</td><td class="r num"><b>${fmt.money(m.monto)}</b></td>
+          <td>${m.rolId ? `<span class="pill good">Descontado${r ? " · " + esc(r.periodoTxt) : ""}</span>` : '<span class="pill warn">Por descontar</span>'}</td></tr>`; }).join("")}</tbody></table></div>`
+        : `<div class="empty">No hay adelantos ni descuentos con estos filtros.${isAdmin() ? " Usa «Registrar adelanto o descuento»." : ""}</div>`}
+    </section>`;
+  }
+  function openMovDialog(id) {
+    const ro = !isAdmin();
+    const m0 = id ? db.adelantos.find((x) => x.id === id) : null;
+    if (!m0 && ro) return;
+    const locked = !!(m0 && m0.rolId);
+    const emps = db.empleados.filter((e) => e.activo !== false || (m0 && e.id === m0.empleadoId)).sort((a, b) => locIdx(a.localId) - locIdx(b.localId) || a.nombre.localeCompare(b.nombre, "es"));
+    const v = m0 || { empleadoId: emps[0]?.id || "", tipo: "ADELANTO", fecha: today(), monto: "", motivo: "", deCaja: true };
+    const enCaja = m0 ? db.reportes.some((r) => r.tipo === "CAJA" && r.lineas.some((l) => l.movId === m0.id)) : true;
+    if (!emps.length) return toast("Primero agrega trabajadores en la pestaña Trabajadores.");
+    const { ov, close } = dialog(`<form class="dialog" id="mov-form" novalidate role="dialog" aria-modal="true" aria-labelledby="mv-t">
+      ${dlgHead("mv-t", m0 ? (m0.tipo === "ADELANTO" ? "Adelanto" : "Descuento") : "Registrar adelanto o descuento")}
+      ${locked ? `<div class="note info">Ya se descontó en un rol de pagos. Para cambiarlo, reabre ese rol.</div>` : ""}
+      <div class="field"><label for="mv-emp">Trabajador</label><select class="input" id="mv-emp">${emps.map((e) => `<option value="${e.id}" ${v.empleadoId === e.id ? "selected" : ""}>${esc(e.nombre)} · ${esc(local(e.localId).nombre)}</option>`).join("")}</select></div>
+      <div class="segmented" role="group" aria-label="Tipo" id="mv-tipo">${[["ADELANTO", "Adelanto de sueldo"], ["DESCUENTO", "Descuento"]].map(([k, x]) => `<button type="button" class="seg" aria-pressed="${v.tipo === k}" data-mt="${k}">${x}</button>`).join("")}</div>
+      <div class="grid2"><div class="field"><label for="mv-monto">Monto</label><input class="input num big-input" id="mv-monto" inputmode="decimal" value="${showNum(v.monto)}" placeholder="0,00"></div>
+        <div class="field"><label for="mv-fecha">Fecha</label><input class="input" type="date" id="mv-fecha" value="${v.fecha}" max="${today()}"></div></div>
+      <div class="field"><label for="mv-mot" id="mv-mot-l">Motivo</label><input class="input" id="mv-mot" maxlength="160" value="${esc(v.motivo || "")}"><span class="hint" id="mv-mot-h"></span></div>
+      <label class="check-line" id="mv-caja-l"><input type="checkbox" id="mv-caja" ${enCaja ? "checked" : ""}><span>Se entregó de la caja del local: registrarlo como egreso en el reporte diario de esa fecha</span></label>
+      <div id="mv-err" class="errors"></div><div id="mv-conf"></div>
+      <div class="actions">${m0 && !ro && !locked ? `<button type="button" class="btn ghost-danger" data-mvdel style="margin-right:auto">Eliminar</button>` : ""}<button type="button" class="btn" data-close>${ro || locked ? "Cerrar" : "Cancelar"}</button>${ro || locked ? "" : `<button class="btn primary" type="submit">Guardar</button>`}</div>
+    </form>`);
+    const f = $("#mov-form", ov);
+    let tipo = v.tipo;
+    if (ro || locked) f.querySelectorAll("input,select,.seg").forEach((x) => { x.disabled = true; });
+    const sync = () => {
+      f.querySelectorAll("[data-mt]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mt === tipo)));
+      $("#mv-mot-l", f).textContent = tipo === "DESCUENTO" ? "Motivo del descuento" : "Detalle (opcional)";
+      $("#mv-mot", f).placeholder = tipo === "DESCUENTO" ? "Ej.: faltante de caja, producto dañado, día no trabajado" : "Ej.: adelanto de quincena";
+      $("#mv-mot-h", f).textContent = tipo === "DESCUENTO" ? "Obligatorio: queda en su rol de pagos." : "Se descuenta automáticamente en su próximo rol.";
+      $("#mv-caja-l", f).hidden = tipo !== "ADELANTO";
+    };
+    sync();
+    f.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mt]"); if (b && !ro && !locked) { tipo = b.dataset.mt; sync(); }
+      if (e.target.closest("[data-mvdel]")) $("#mv-conf", f).innerHTML = `<div class="confirm-box"><span>¿Eliminar este ${m0.tipo === "ADELANTO" ? "adelanto" : "descuento"}? También se quita del reporte diario si salió de caja.</span><div class="actions"><button type="button" class="btn ghost" data-mvno>Cancelar</button><button type="button" class="btn danger" data-mvok>Eliminar</button></div></div>`;
+      if (e.target.closest("[data-mvno]")) $("#mv-conf", f).innerHTML = "";
+      if (e.target.closest("[data-mvok]")) {
+        db.adelantos = db.adelantos.filter((x) => x.id !== m0.id); quitarDeCaja((l) => l.movId === m0.id);
+        audit(m0.tipo === "ADELANTO" ? "Adelanto eliminado" : "Descuento eliminado", `${empleado(m0.empleadoId)?.nombre} · ${fmt.money(m0.monto)} · ${fmt.date(m0.fecha)}`);
+        save(); close(); render(); toast("Eliminado");
+      }
+    });
+    f.addEventListener("submit", (e) => {
+      e.preventDefault(); if (ro || locked) return;
+      const emp = empleado($("#mv-emp", f).value), monto = numOk($("#mv-monto", f).value), fecha = $("#mv-fecha", f).value, motivo = $("#mv-mot", f).value.trim(), deCaja = tipo === "ADELANTO" && $("#mv-caja", f).checked, errs = [];
+      if (!emp) errs.push("Elige el trabajador.");
+      if (isNaN(monto) || monto <= 0) errs.push("El monto debe ser mayor a 0.");
+      if (!fecha || fecha > today()) errs.push("Elige la fecha (no puede ser futura).");
+      if (tipo === "DESCUENTO" && motivo.length < 3) errs.push("Escribe el motivo del descuento.");
+      if (errs.length) { $("#mv-err", f).innerHTML = errBox(errs); return; }
+      const m = m0 || { id: uid(), rolId: null };
+      Object.assign(m, { empleadoId: emp.id, tipo, fecha, monto: round2(monto), motivo }); delete m.ejemplo;
+      if (!m0) db.adelantos.push(m);
+      quitarDeCaja((l) => l.movId === m.id);
+      if (deCaja) lineaEnCaja(emp.localId, fecha, { categoriaId: "sueldos", monto: m.monto, movId: m.id, detalle: `Adelanto a ${emp.nombre}${motivo ? " · " + motivo : ""}` });
+      audit(m0 ? (tipo === "ADELANTO" ? "Adelanto editado" : "Descuento editado") : tipo === "ADELANTO" ? "Adelanto registrado" : "Descuento registrado", `${emp.nombre} · ${fmt.money(m.monto)} · ${fmt.date(fecha)}${motivo ? " · " + motivo : ""}${deCaja ? " · salió de caja de " + local(emp.localId).nombre : ""}`);
+      save(); close(); render(); toast(tipo === "ADELANTO" ? "Adelanto registrado" : "Descuento registrado");
+    });
+    $("#mv-monto", f).focus();
+  }
+
+  /* ---------- Roles de pago ---------- */
+  const rolEstado = (r) => r.estado !== "CONFIRMADO" ? '<span class="pill warn">Borrador</span>' : r.pago ? `<span class="pill good">Pagado · ${fmt.short(r.pago.fecha)}</span>` : '<span class="pill bad">Aprobado · sin pagar</span>';
   function viewRoles() {
     const roles = db.reportes.filter((r) => r.tipo === "ROL" && (!ui.perLocal || ui.perLocal === "todos" || r.localId === ui.perLocal)).sort((a, b) => b.hasta.localeCompare(a.hasta) || locIdx(a.localId) - locIdx(b.localId));
     const nf = ui.rolNew;
+    const fld = nf ? (nf.tramo === "S" ? `<div class="field"><label for="rn-desde">Semana que empieza el</label><input class="input" type="date" id="rn-desde" value="${nf.desde}" max="${today()}"></div>`
+      : nf.tramo === "D" ? `<div class="field"><label for="rn-desde">Desde</label><input class="input" type="date" id="rn-desde" value="${nf.desde}" max="${today()}"></div><div class="field"><label for="rn-hasta">Hasta</label><input class="input" type="date" id="rn-hasta" value="${nf.hasta}" max="${today()}"></div>`
+      : `<div class="field"><label for="rn-mes">Mes</label><input class="input" type="month" id="rn-mes" value="${nf.mes}" max="${curMes()}"></div>`) : "";
     return `
-    ${nf ? `<section class="card" style="display:grid;gap:14px"><div><h2>Nuevo rol de pagos</h2><p class="muted small">Se arma con los trabajadores activos del local que cobran con esa frecuencia. Luego completas días, horas extra, bonos y descuentos.</p></div>
+    ${nf ? `<section class="card" style="display:grid;gap:14px"><div><h2>Nuevo rol de pagos</h2><p class="muted small">Se arma con los trabajadores activos del local que cobran con esa frecuencia, y trae solos sus adelantos y descuentos pendientes.</p></div>
       <form id="rolnew-form" class="grid3" style="align-items:end" novalidate>
-        <div class="field"><label for="rn-mes">Mes</label><input class="input" type="month" id="rn-mes" value="${nf.mes}" max="${curMes()}"></div>
-        <div class="field"><label for="rn-tramo">Período</label><select class="input" id="rn-tramo">${[["M", "Mes completo (mensuales)"], ["Q1", "1.ª quincena (quincenales)"], ["Q2", "2.ª quincena (quincenales)"]].map(([k, x]) => `<option value="${k}" ${nf.tramo === k ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        <div class="field"><label for="rn-tramo">Tipo de pago</label><select class="input" id="rn-tramo">${[["M", "Mensual (mes completo)"], ["Q1", "Quincenal · 1.ª quincena"], ["Q2", "Quincenal · 2.ª quincena"], ["S", "Semanal"], ["D", "Diario (uno o varios días)"]].map(([k, x]) => `<option value="${k}" ${nf.tramo === k ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        ${fld}
         <div class="field"><label for="rn-local">Local</label>${localSelect("rn-local", nf.localId)}</div>
         <div id="rn-err" style="grid-column:1/-1"></div>
         <div class="actions" style="grid-column:1/-1"><button type="button" class="btn ghost" data-f="rol-new-cancel">Cancelar</button><button class="btn primary" type="submit">Armar rol</button></div>
       </form></section>` : ""}
     <section class="card">
-      <div class="card-head"><div><h2>Roles de pago</h2><p class="muted small">Solo los aprobados cuentan como gasto de sueldos del local.</p></div>${segLocal("perLocal", ui.perLocal || "todos", "Todos")}</div>
+      <div class="card-head"><div><h2>Roles de pago</h2><p class="muted small">Al registrar el pago, se descuenta del reporte diario del día en que se paga.</p></div>${segLocal("perLocal", ui.perLocal || "todos", "Todos")}</div>
       ${roles.length ? `<div class="table-wrap"><table>
         <thead><tr><th>Período</th><th>Local</th><th class="r">Trabajadores</th><th class="r">Neto a pagar</th><th class="r hide-sm">Costo para EduPan</th><th>Estado</th></tr></thead>
-        <tbody>${roles.map((r) => { const t = F.rolTotals(r); return `<tr class="click" tabindex="0" data-open="${r.id}" data-route="personal"><td style="white-space:nowrap"><b>${esc(r.periodoTxt)}</b></td><td>${esc(local(r.localId).nombre)}</td><td class="r num">${t.n}</td><td class="r num"><b>${fmt.money(t.neto)}</b></td><td class="r num hide-sm">${fmt.money(t.costo)}</td><td>${r.estado === "CONFIRMADO" ? '<span class="pill good">Aprobado</span>' : '<span class="pill warn">Borrador</span>'}</td></tr>`; }).join("")}</tbody></table></div>`
+        <tbody>${roles.map((r) => { const t = F.rolTotals(r); return `<tr class="click" tabindex="0" data-open="${r.id}" data-route="personal"><td style="white-space:nowrap"><b>${esc(r.periodoTxt)}</b></td><td>${esc(local(r.localId).nombre)}</td><td class="r num">${t.n}</td><td class="r num"><b>${fmt.money(t.neto)}</b></td><td class="r num hide-sm">${fmt.money(t.costo)}</td><td>${rolEstado(r)}</td></tr>`; }).join("")}</tbody></table></div>`
         : `<div class="empty">Todavía no hay roles de pago.${isAdmin() ? " Crea el primero con «Nuevo rol de pagos»." : ""}</div>`}
     </section>`;
   }
 
-  function rolCompute(d) {
-    const per = F.periodo(d.mes, d.tramo);
-    return d.ids.map((id) => { const e = d.snap[id]; return F.rolLinea(e, d.inp[id], db.nomina, d.tramo, per.hasta); });
-  }
+  function rolCompute(d) { return d.ids.map((id) => F.rolLinea(d.snap[id], d.inp[id], db.nomina, d.tramo, d.per.hasta, d.per.dias)); }
   function viewRolEditor() {
-    const d = ui.rolDraft, per = F.periodo(d.mes, d.tramo), lines = rolCompute(d), t = F.rolTotals({ lineas: lines });
+    const d = ui.rolDraft, per = d.per, lines = rolCompute(d), t = F.rolTotals({ lineas: lines });
     const inp = (id, k, ph, w) => `<input class="input num cell-in" data-rol="${id}:${k}" inputmode="decimal" value="${esc(showNum(d.inp[id][k]))}" placeholder="${ph}" aria-label="${k}" style="width:${w || 66}px">`;
+    const movs = (id) => (d.movs[id] || []).map((mid) => db.adelantos.find((m) => m.id === mid)).filter(Boolean);
     return `
     <button class="btn ghost back" data-f="rol-cancel">‹ Roles de pago</button>
     <div class="page-head"><div class="lead"><span class="eyebrow">${d.id ? "Editar" : "Nuevo"} rol de pagos · ${esc(local(d.localId).nombre)}</span><h1>${esc(per.txt)}</h1><p>Del ${fmt.date(per.desde)} al ${fmt.date(per.hasta)}. Completa lo que cambie; lo demás se calcula solo.</p></div></div>
     <section class="card">
       <div class="table-wrap"><table class="rol-table">
-        <thead><tr><th>Trabajador</th><th class="r">Días<br><span class="muted small">de ${per.dias}</span></th><th class="r">H. extra<br><span class="muted small">50 %</span></th><th class="r">H. extra<br><span class="muted small">100 %</span></th><th class="r">Bonos</th><th class="r">Anticipos</th><th class="r">Otros desc.</th><th class="r">Ingresos</th><th class="r">Neto a recibir</th><th class="r">Costo EduPan</th></tr></thead>
-        <tbody>${lines.map((l) => `<tr><td style="white-space:nowrap"><b>${esc(l.nombre)}</b><br><span class="muted small">${esc(l.cargo || "")} · ${fmt.money(l.sueldo)}${l.iessAfiliado ? "" : " · sin IESS"}</span></td>
+        <thead><tr><th>Trabajador</th><th class="r">Días<br><span class="muted small">de ${per.dias}</span></th><th class="r">H. extra<br><span class="muted small">50 %</span></th><th class="r">H. extra<br><span class="muted small">100 %</span></th><th class="r">Bonos</th><th class="r">Adelantos</th><th class="r">Descuentos</th><th class="r">Ingresos</th><th class="r">Neto a recibir</th><th class="r">Costo EduPan</th></tr></thead>
+        <tbody>${lines.map((l) => { const ms = movs(l.empleadoId); return `<tr><td style="white-space:nowrap"><b>${esc(l.nombre)}</b><br><span class="muted small">${esc(l.cargo || "")} · ${l.pagoDia ? fmt.money(l.pagoDia) + "/día" : fmt.money(l.sueldo) + "/mes"}${l.iessAfiliado ? "" : " · sin IESS"}</span></td>
           <td class="r">${inp(l.empleadoId, "dias", per.dias, 50)}</td><td class="r">${inp(l.empleadoId, "h50", "0", 50)}</td><td class="r">${inp(l.empleadoId, "h100", "0", 50)}</td><td class="r">${inp(l.empleadoId, "bonos", "0,00")}</td><td class="r">${inp(l.empleadoId, "anticipos", "0,00")}</td><td class="r">${inp(l.empleadoId, "otros", "0,00")}</td>
-          <td class="r num">${fmt.money(l.total)}</td><td class="r num"><b>${fmt.money(l.neto)}</b>${l.iessP ? `<br><span class="small" style="color:var(--bad)">IESS − ${fmt.money(l.iessP)}</span>` : ""}</td><td class="r num">${fmt.money(l.costo)}</td></tr>`).join("")}</tbody>
+          <td class="r num">${fmt.money(l.total)}</td><td class="r num"><b>${fmt.money(l.neto)}</b>${l.iessP ? `<br><span class="small" style="color:var(--bad)">IESS − ${fmt.money(l.iessP)}</span>` : ""}</td><td class="r num">${fmt.money(l.costo)}</td></tr>
+          ${ms.length ? `<tr class="sub-row"><td colspan="10">${ms.map((m) => `<span class="mov-chip ${m.tipo === "ADELANTO" ? "" : "bad"}">${m.tipo === "ADELANTO" ? "Adelanto" : "Descuento"} ${fmt.short(m.fecha)} · ${fmt.money(m.monto)}${m.motivo ? " · " + esc(m.motivo) : ""}</span>`).join("")}</td></tr>` : ""}`; }).join("")}</tbody>
         <tfoot><tr><td><b>Total</b></td><td colspan="6"></td><td class="r num"><b>${fmt.money(t.total)}</b></td><td class="r num"><b>${fmt.money(t.neto)}</b><br><span class="small" style="color:var(--bad)">IESS − ${fmt.money(t.iess)}</span></td><td class="r num"><b>${fmt.money(t.costo)}</b></td></tr></tfoot>
       </table></div>
-      <p class="muted small" style="margin-top:10px">Hora normal = sueldo ÷ ${db.nomina.horasMes}. Horas extra al 50 % (suplementarias) y al 100 % (extraordinarias, fines de semana o feriados). Aporte personal IESS ${showNum(db.nomina.iessPersonal)} %.</p>
+      <p class="muted small" style="margin-top:10px">Los adelantos y descuentos pendientes de cada trabajador ya vienen sumados (se registran en la pestaña «Adelantos y descuentos»). Hora normal = sueldo mensual ÷ ${db.nomina.horasMes}; extras al 50 % y al 100 %. Aporte personal IESS ${showNum(db.nomina.iessPersonal)} %.</p>
     </section>
     <div class="two">
-      <section class="card"><div class="card-head"><div><h2>Costo para EduPan</h2><p class="muted small">Lo que entra como gasto de sueldos al aprobar</p></div></div>
+      <section class="card"><div class="card-head"><div><h2>Costo para EduPan</h2><p class="muted small">Sueldos, aportes y beneficios del período</p></div></div>
         <div class="totals num">
           <div><span class="muted">Ingresos de los trabajadores</span><span>${fmt.money(t.total)}</span></div>
           <div><span class="muted">Aporte patronal IESS (${showNum(db.nomina.iessPatronal)} %)</span><span>${fmt.money(t.patronal)}</span></div>
@@ -2015,63 +2135,109 @@
           <div><span class="muted"><b>Costo total</b></span><b class="big">${fmt.money(t.costo)}</b></div>
         </div></section>
       <section class="card" style="display:grid;gap:12px;align-content:start">
-        <div><h2>Guardar</h2><p class="muted small">El borrador no cuenta. Al aprobarlo, el costo entra como egreso de sueldos de ${esc(local(d.localId).nombre)} del ${fmt.date(per.hasta)}.</p></div>
+        <div><h2>Guardar</h2><p class="muted small">Al aprobarlo podrás registrar el pago: el neto a los trabajadores (y si quieres, los aportes al IESS) se descuenta del reporte diario de ${esc(local(d.localId).nombre)} del día en que pagas.</p></div>
         <div id="rol-err"></div>
         <div class="actions" style="justify-content:flex-start"><button class="btn" data-f="rol-save" data-v="BORRADOR">Guardar borrador</button><button class="btn primary" data-f="rol-save" data-v="CONFIRMADO">${ICON.check} Aprobar rol</button></div>
       </section>
     </div>`;
   }
   function viewRolDetalle(r) {
-    const t = F.rolTotals(r);
+    const t = F.rolTotals(r), mv = db.adelantos.filter((m) => m.rolId === r.id);
     return `
     <button class="btn ghost back" data-f="rol-back">‹ Roles de pago</button>
     <div class="page-head"><div class="lead"><span class="eyebrow">Rol de pagos · ${esc(local(r.localId).nombre)}</span><h1>${esc(r.periodoTxt)}</h1>
-      <p>${r.estado === "CONFIRMADO" ? `<span class="pill good">Aprobado</span> ${r.aprobado ? "el " + fmt.stamp(r.aprobado) : ""}` : '<span class="pill warn">Borrador · no cuenta como gasto</span>'}</p></div>
+      <p>${rolEstado(r)} ${r.estado === "CONFIRMADO" && r.aprobado ? `<span class="muted small">aprobado el ${fmt.stamp(r.aprobado)}</span>` : ""}</p></div>
       <div class="actions">${!data.DEMO ? `<button class="btn" data-f="rol-xlsx" data-id="${r.id}">${ICON.informes} Excel para firmar</button>` : ""}
-      ${isAdmin() ? (r.estado === "CONFIRMADO" ? `<button class="btn" data-f="rol-reopen" data-id="${r.id}">Reabrir para corregir</button>` : `<button class="btn danger ghost-danger" data-f="rol-del" data-id="${r.id}">Eliminar</button><button class="btn primary" data-f="rol-edit" data-id="${r.id}">Continuar editando</button>`) : ""}</div>
+      ${isAdmin() ? (r.estado === "CONFIRMADO" ? `${r.pago ? "" : `<button class="btn primary" data-f="rol-pagar" data-id="${r.id}">${ICON.check} Registrar pago</button>`}<button class="btn" data-f="rol-reopen" data-id="${r.id}">Reabrir para corregir</button>` : `<button class="btn danger ghost-danger" data-f="rol-del" data-id="${r.id}">Eliminar</button><button class="btn primary" data-f="rol-edit" data-id="${r.id}">Continuar editando</button>`) : ""}</div>
     </div>
     ${ui.rolConfirm === r.id ? `<div class="confirm-box"><span>¿Eliminar este borrador de rol?</span><div class="actions"><button class="btn ghost" data-f="rol-del-no">Cancelar</button><button class="btn danger" data-f="rol-del-ok" data-id="${r.id}">Eliminar</button></div></div>` : ""}
+    ${ui.rolReopen === r.id ? `<div class="confirm-box"><span>${r.pago ? `Este rol ya se pagó el ${fmt.date(r.pago.fecha)}. Al reabrirlo se quita ese pago del reporte diario y los adelantos vuelven a quedar por descontar.` : "Los adelantos y descuentos vuelven a quedar por descontar hasta aprobarlo de nuevo."}</span><div class="actions"><button class="btn ghost" data-f="rol-reopen-no">Cancelar</button><button class="btn primary" data-f="rol-reopen-ok" data-id="${r.id}">Reabrir</button></div></div>` : ""}
+    ${r.pago ? `<div class="note good">Pagado el <b>${fmt.date(r.pago.fecha)}</b>: neto ${fmt.money(r.pago.neto || 0)}${r.pago.iess ? ` · aportes IESS ${fmt.money(r.pago.iess)}` : ""}${r.pago.beneficios ? ` · décimos y fondos ${fmt.money(r.pago.beneficios)}` : ""}. Está descontado en el reporte diario de ${esc(local(r.localId).nombre)} de ese día.</div>` : r.estado === "CONFIRMADO" ? `<div class="note">Aprobado pero <b>sin pagar</b>: todavía no se descuenta del reporte diario. Toca «Registrar pago» el día que pagues.</div>` : ""}
     <section class="kpis">
       <div class="kpi hero"><span class="eyebrow">Neto a pagar</span><span class="val num">${fmt.money(t.neto)}</span><span class="sub">${t.n} trabajador${t.n === 1 ? "" : "es"}</span></div>
       <div class="kpi"><span class="eyebrow">Ingresos</span><span class="val num">${fmt.money(t.total)}</span><span class="sub">Sueldos, horas extra y bonos</span></div>
-      <div class="kpi"><span class="eyebrow">Descuentos</span><span class="val num" style="color:var(--bad)">${fmt.money(t.desc)}</span><span class="sub">IESS ${fmt.money(t.iess)} · anticipos y otros</span></div>
+      <div class="kpi"><span class="eyebrow">Descuentos</span><span class="val num" style="color:var(--bad)">${fmt.money(t.desc)}</span><span class="sub">IESS ${fmt.money(t.iess)} · adelantos y descuentos</span></div>
       <div class="kpi"><span class="eyebrow">Costo para EduPan</span><span class="val num">${fmt.money(t.costo)}</span><span class="sub">Con aporte patronal y beneficios</span></div>
     </section>
     <section class="card"><div class="table-wrap"><table>
-      <thead><tr><th>Trabajador</th><th class="r">Días</th><th class="r">Sueldo ganado</th><th class="r">Horas extra</th><th class="r">Bonos</th><th class="r">Ingresos</th><th class="r">IESS</th><th class="r">Anticipos y otros</th><th class="r">Décimos y fondos en el rol</th><th class="r">Neto</th><th class="r hide-sm">Costo EduPan</th></tr></thead>
-      <tbody>${r.lineas.map((l) => `<tr><td style="white-space:nowrap"><b>${esc(l.nombre)}</b><br><span class="muted small">${esc(l.cargo || "")}</span></td><td class="r num">${l.dias}</td><td class="r num">${fmt.money(l.ganado)}</td><td class="r num">${l.extras ? fmt.money(l.extras) : "—"}</td><td class="r num">${l.bonos ? fmt.money(l.bonos) : "—"}</td><td class="r num">${fmt.money(l.total)}</td><td class="r num" style="color:var(--bad)">${l.iessP ? "− " + fmt.money(l.iessP) : "—"}</td><td class="r num" style="color:var(--bad)">${l.anticipos + l.otros ? "− " + fmt.money(l.anticipos + l.otros) : "—"}</td><td class="r num">${round2(l.neto - l.total + l.desc) ? fmt.money(round2(l.neto - l.total + l.desc)) : "—"}</td><td class="r num"><b>${fmt.money(l.neto)}</b></td><td class="r num hide-sm">${fmt.money(l.costo)}</td></tr>`).join("")}</tbody>
+      <thead><tr><th>Trabajador</th><th class="r">Días</th><th class="r">Sueldo ganado</th><th class="r">Horas extra</th><th class="r">Bonos</th><th class="r">Ingresos</th><th class="r">IESS</th><th class="r">Adelantos</th><th class="r">Descuentos</th><th class="r">Décimos y fondos en el rol</th><th class="r">Neto</th><th class="r hide-sm">Costo EduPan</th></tr></thead>
+      <tbody>${r.lineas.map((l) => { const ms = mv.filter((m) => m.empleadoId === l.empleadoId); return `<tr><td style="white-space:nowrap"><b>${esc(l.nombre)}</b><br><span class="muted small">${esc(l.cargo || "")}</span></td><td class="r num">${l.dias}</td><td class="r num">${fmt.money(l.ganado)}</td><td class="r num">${l.extras ? fmt.money(l.extras) : "—"}</td><td class="r num">${l.bonos ? fmt.money(l.bonos) : "—"}</td><td class="r num">${fmt.money(l.total)}</td><td class="r num" style="color:var(--bad)">${l.iessP ? "− " + fmt.money(l.iessP) : "—"}</td><td class="r num" style="color:var(--bad)">${l.anticipos ? "− " + fmt.money(l.anticipos) : "—"}</td><td class="r num" style="color:var(--bad)">${l.otros ? "− " + fmt.money(l.otros) : "—"}</td><td class="r num">${round2(l.neto - l.total + l.desc) ? fmt.money(round2(l.neto - l.total + l.desc)) : "—"}</td><td class="r num"><b>${fmt.money(l.neto)}</b></td><td class="r num hide-sm">${fmt.money(l.costo)}</td></tr>
+        ${ms.length ? `<tr class="sub-row"><td colspan="12">${ms.map((m) => `<span class="mov-chip ${m.tipo === "ADELANTO" ? "" : "bad"}">${m.tipo === "ADELANTO" ? "Adelanto" : "Descuento"} ${fmt.short(m.fecha)} · ${fmt.money(m.monto)}${m.motivo ? " · " + esc(m.motivo) : ""}</span>`).join("")}</td></tr>` : ""}`; }).join("")}</tbody>
     </table></div></section>`;
   }
   function newRolDraft(base) {
-    if (base) {
-      const snap = {}, inp = {}, ids = [];
-      for (const l of base.lineas) { const e = db.empleados.find((x) => x.id === l.empleadoId) || {}; snap[l.empleadoId] = { ...e, id: l.empleadoId, nombre: l.nombre, cargo: l.cargo, sueldo: l.sueldo, iess: l.iessAfiliado, decimosMensual: l.decimosMensual }; inp[l.empleadoId] = { dias: l.dias, h50: l.h50 || "", h100: l.h100 || "", bonos: l.bonos || "", anticipos: l.anticipos || "", otros: l.otros || "" }; ids.push(l.empleadoId); }
-      return { id: base.id, localId: base.localId, mes: base.mes, tramo: base.tramo, snap, inp, ids, creado: base.creado };
+    if (!base) return null;
+    const snap = {}, inp = {}, ids = [], movs = {};
+    for (const l of base.lineas) {
+      const e = db.empleados.find((x) => x.id === l.empleadoId) || {};
+      snap[l.empleadoId] = { ...e, id: l.empleadoId, nombre: l.nombre, cargo: l.cargo, sueldo: l.sueldo, frecuencia: l.frecuencia || e.frecuencia, pagoDia: l.pagoDia || null, iess: l.iessAfiliado, decimosMensual: l.decimosMensual };
+      inp[l.empleadoId] = { dias: l.dias, h50: l.h50 || "", h100: l.h100 || "", bonos: l.bonos || "", anticipos: l.anticipos || "", otros: l.otros || "" };
+      movs[l.empleadoId] = db.adelantos.filter((m) => m.empleadoId === l.empleadoId && (m.rolId === base.id || !m.rolId)).map((m) => m.id);
+      ids.push(l.empleadoId);
     }
+    const per = { desde: base.desde, hasta: base.hasta, dias: base.dias || F.periodoRol({ tramo: base.tramo, mes: base.mes, desde: base.desde, hasta: base.hasta }).dias, txt: base.periodoTxt };
+    return { id: base.id, localId: base.localId, mes: base.mes, tramo: base.tramo, per, snap, inp, ids, movs, creado: base.creado };
   }
   function saveRol(estado) {
-    const d = ui.rolDraft, per = F.periodo(d.mes, d.tramo), lineas = rolCompute(d), errs = [];
-    for (const id of d.ids) for (const k of ["dias", "h50", "h100", "bonos", "anticipos", "otros"]) { const v = numOk(d.inp[id][k]); if (isNaN(v) || v < 0) { errs.push(`${d.snap[id].nombre}: revisa «${{ dias: "días", h50: "horas 50 %", h100: "horas 100 %", bonos: "bonos", anticipos: "anticipos", otros: "otros descuentos" }[k]}».`); } }
+    const d = ui.rolDraft, per = d.per, lineas = rolCompute(d), errs = [];
+    for (const id of d.ids) for (const k of ["dias", "h50", "h100", "bonos", "anticipos", "otros"]) { const v = numOk(d.inp[id][k]); if (isNaN(v) || v < 0) { errs.push(`${d.snap[id].nombre}: revisa «${{ dias: "días", h50: "horas 50 %", h100: "horas 100 %", bonos: "bonos", anticipos: "adelantos", otros: "descuentos" }[k]}».`); } }
     if (errs.length) { $("#rol-err").innerHTML = errBox(errs); return; }
-    const rep = { id: d.id || uid(), tipo: "ROL", localId: d.localId, desde: per.desde, hasta: per.hasta, mes: d.mes, tramo: d.tramo, periodoTxt: per.txt, lineas, estado, obs: "", creado: d.creado || util.now(), aprobado: estado === "CONFIRMADO" ? util.now() : null };
+    lineas.forEach((l) => { const ms = (d.movs[l.empleadoId] || []).map((id) => db.adelantos.find((m) => m.id === id)).filter(Boolean); if (ms.length) l.movs = ms.map((m) => `${m.tipo === "ADELANTO" ? "Adelanto" : "Descuento"} ${fmt.short(m.fecha)} ${fmt.money(m.monto)}${m.motivo ? " (" + m.motivo + ")" : ""}`).join("; "); });
+    const rep = { id: d.id || uid(), tipo: "ROL", localId: d.localId, desde: per.desde, hasta: per.hasta, dias: per.dias, mes: d.mes || per.hasta.slice(0, 7), tramo: d.tramo, periodoTxt: per.txt, lineas, estado, obs: "", creado: d.creado || util.now(), aprobado: estado === "CONFIRMADO" ? util.now() : null, pago: null };
     const i = db.reportes.findIndex((x) => x.id === rep.id);
     if (i >= 0) db.reportes[i] = rep; else db.reportes.push(rep);
+    // Adelantos y descuentos: quedan descontados al aprobar
+    for (const m of db.adelantos) if (m.rolId === rep.id) m.rolId = null;
+    if (estado === "CONFIRMADO") for (const ids of Object.values(d.movs)) for (const id of ids) { const m = db.adelantos.find((x) => x.id === id); if (m) m.rolId = rep.id; }
     const t = F.rolTotals(rep);
     audit(estado === "CONFIRMADO" ? "Rol de pagos aprobado" : "Rol de pagos guardado como borrador", `${local(rep.localId).nombre} · ${per.txt} · ${t.n} trabajadores · neto ${fmt.money(t.neto)} · costo ${fmt.money(t.costo)}`);
     ui.rolDraft = null; ui.viewId = rep.id;
-    save(); render(); toast(estado === "CONFIRMADO" ? "Rol aprobado: ya cuenta como gasto" : "Borrador guardado");
+    save(); render();
+    if (estado === "CONFIRMADO") { toast("Rol aprobado"); openRolPago(rep.id); } else toast("Borrador guardado");
+  }
+  /** Registrar el pago de un rol: se descuenta del reporte diario del día en que se paga. */
+  function openRolPago(id) {
+    if (!isAdmin()) return;
+    const r = db.reportes.find((x) => x.id === id); if (!r || r.estado !== "CONFIRMADO" || r.pago) return;
+    const p = F.rolPagoPartes(r);
+    const { ov, close } = dialog(`<form class="dialog" id="rolpago-form" novalidate role="dialog" aria-modal="true" aria-labelledby="rp-t">
+      ${dlgHead("rp-t", "Registrar pago del rol")}
+      <div class="note info"><b>${esc(r.periodoTxt)}</b> · ${esc(local(r.localId).nombre)} · ${r.lineas.length} trabajador${r.lineas.length === 1 ? "" : "es"}</div>
+      <div class="field"><label for="rp-fecha">Fecha en que se paga</label><input class="input" type="date" id="rp-fecha" value="${today()}" max="${today()}"><span class="hint">Se descuenta del reporte diario de ${esc(local(r.localId).nombre)} de ese día.</span></div>
+      <div class="checks-col">
+        <label class="check-line"><input type="checkbox" id="rp-neto" checked disabled><span>Neto a los trabajadores: <b>${fmt.money(p.neto)}</b></span></label>
+        ${p.iess ? `<label class="check-line"><input type="checkbox" id="rp-iess" checked><span>Aportes al IESS (personal y patronal${r.lineas.some((l) => l.fondosEnRol === false && l.fondos) ? " y fondos de reserva" : ""}): <b>${fmt.money(p.iess)}</b> <span class="muted small">· desmárcalo si lo pagas al IESS otro día</span></span></label>` : ""}
+        ${p.beneficios ? `<label class="check-line"><input type="checkbox" id="rp-ben"><span>Décimos de este período: <b>${fmt.money(p.beneficios)}</b> <span class="muted small">· normalmente se pagan en diciembre (13.º) y agosto (14.º)</span></span></label>` : ""}
+      </div>
+      <div id="rp-err" class="errors"></div>
+      <div class="actions"><button type="button" class="btn" data-close>Más tarde</button><button class="btn primary" type="submit">${ICON.check} Registrar pago</button></div>
+    </form>`);
+    const f = $("#rolpago-form", ov);
+    f.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const fecha = $("#rp-fecha", f).value;
+      if (!fecha || fecha > today()) { $("#rp-err", f).innerHTML = errBox(["Elige la fecha del pago (no puede ser futura)."]); return; }
+      const iess = $("#rp-iess", f)?.checked ? p.iess : 0, ben = $("#rp-ben", f)?.checked ? p.beneficios : 0;
+      const det = `Rol ${r.periodoTxt}`;
+      if (p.neto) lineaEnCaja(r.localId, fecha, { categoriaId: "sueldos", monto: p.neto, rolId: r.id, detalle: det });
+      if (iess) lineaEnCaja(r.localId, fecha, { categoriaId: "iess", monto: iess, rolId: r.id, detalle: "Aportes IESS · " + det });
+      if (ben) lineaEnCaja(r.localId, fecha, { categoriaId: "beneficios", monto: ben, rolId: r.id, detalle: "Décimos · " + det });
+      r.pago = { fecha, neto: p.neto, iess, beneficios: ben, registrado: util.now() };
+      audit("Pago de rol registrado", `${local(r.localId).nombre} · ${r.periodoTxt} · ${fmt.date(fecha)} · neto ${fmt.money(p.neto)}${iess ? ` · IESS ${fmt.money(iess)}` : ""}${ben ? ` · décimos ${fmt.money(ben)}` : ""}`);
+      save(); close(); render(); toast(`Pago registrado: ${fmt.money(p.neto + iess + ben)} en el reporte del ${fmt.short(fecha)}`);
+    });
   }
   function rolWorkbook(r) {
     const t = F.rolTotals(r), L = local(r.localId).nombre;
-    const head = [[{ v: `EduPan Panaderías · Rol de pagos · ${L}`, s: "title" }], [{ v: `${r.periodoTxt} · del ${fmt.date(r.desde)} al ${fmt.date(r.hasta)} · ${r.estado === "CONFIRMADO" ? "Aprobado" : "Borrador"}`, s: "sub" }], []];
-    const cols = ["Trabajador", "Cargo", "Días", "Sueldo ganado", "Horas extra", "Bonos", "Total ingresos", "Aporte IESS", "Anticipos", "Otros descuentos", "Décimos y fondos pagados", "Neto a recibir", "Firma"];
-    const rows = head.concat([cols.map((v, i) => ({ v, s: i < 2 || i === 12 ? "header" : "headerR" }))]);
+    const head = [[{ v: `EduPan Panaderías · Rol de pagos · ${L}`, s: "title" }], [{ v: `${r.periodoTxt} · del ${fmt.date(r.desde)} al ${fmt.date(r.hasta)} · ${r.estado === "CONFIRMADO" ? (r.pago ? "Pagado el " + fmt.date(r.pago.fecha) : "Aprobado") : "Borrador"}`, s: "sub" }], []];
+    const cols = ["Trabajador", "Cargo", "Días", "Sueldo ganado", "Horas extra", "Bonos", "Total ingresos", "Aporte IESS", "Adelantos", "Descuentos", "Décimos y fondos pagados", "Neto a recibir", "Detalle de adelantos y descuentos", "Firma"];
+    const rows = head.concat([cols.map((v, i) => ({ v, s: i < 2 || i >= 12 ? "header" : "headerR" }))]);
     const first = rows.length + 1;
-    r.lineas.forEach((l) => rows.push([l.nombre, l.cargo || "", { v: l.dias, s: "int" }, { v: l.ganado, s: "money" }, { v: l.extras, s: "money" }, { v: l.bonos, s: "money" }, { v: l.total, s: "money" }, { v: l.iessP, s: "money" }, { v: l.anticipos, s: "money" }, { v: l.otros, s: "money" }, { v: round2(l.neto - l.total + l.desc), s: "money" }, { v: l.neto, s: "totalMoney" }, ""]));
+    r.lineas.forEach((l) => rows.push([l.nombre, l.cargo || "", { v: l.dias, s: "int" }, { v: l.ganado, s: "money" }, { v: l.extras, s: "money" }, { v: l.bonos, s: "money" }, { v: l.total, s: "money" }, { v: l.iessP, s: "money" }, { v: l.anticipos, s: "money" }, { v: l.otros, s: "money" }, { v: round2(l.neto - l.total + l.desc), s: "money" }, { v: l.neto, s: "totalMoney" }, l.movs || "", ""]));
     const last = rows.length, C = PPX.excel.colName;
     const vals = (l) => [l.ganado, l.extras, l.bonos, l.total, l.iessP, l.anticipos, l.otros, round2(l.neto - l.total + l.desc), l.neto];
     const sums = r.lineas.reduce((acc, l) => vals(l).map((v, i) => acc[i] + v), Array(9).fill(0));
-    rows.push(["Total", "", "", ...[3, 4, 5, 6, 7, 8, 9, 10, 11].map((c, i) => ({ v: round2(sums[i]), s: "totalMoney", f: `SUM(${C(c)}${first}:${C(c)}${last})` })), ""].map((x, i) => (i === 0 ? { v: "Total", s: "totalLabel" } : x)));
+    rows.push(["Total", "", "", ...[3, 4, 5, 6, 7, 8, 9, 10, 11].map((c, i) => ({ v: round2(sums[i]), s: "totalMoney", f: `SUM(${C(c)}${first}:${C(c)}${last})` })), "", ""].map((x, i) => (i === 0 ? { v: "Total", s: "totalLabel" } : x)));
     const heights = {}; for (let i = first; i <= last; i++) heights[i] = 30;
     const prov = head.concat([["Trabajador", "Ingresos", "Aporte patronal IESS", "Décimo tercero", "Décimo cuarto", "Fondos de reserva", "Costo total"].map((v, i) => ({ v, s: i ? "headerR" : "header" }))]);
     const pf = prov.length + 1;
@@ -2082,7 +2248,7 @@
     prov.push([{ v: "Total", s: "totalLabel" }, ...[1, 2, 3, 4, 5, 6].map((c, i) => ({ v: round2(ps[i]), s: "totalMoney", f: `SUM(${C(c)}${pf}:${C(c)}${pl})` }))]);
     prov.push([]); prov.push([{ v: `Valores usados: salario básico ${fmt.money(db.nomina.sbu)}, aporte personal ${db.nomina.iessPersonal} %, aporte patronal ${db.nomina.iessPatronal} %, fondos de reserva ${db.nomina.fondos} %. Costo total del rol: ${fmt.money(t.costo)}.`, s: "sub" }]);
     return [
-      { name: "Rol de pagos", cols: [26, 20, 7, 13, 12, 11, 14, 12, 12, 13, 14, 15, 26], rows, freeze: "B5", heights },
+      { name: "Rol de pagos", cols: [26, 20, 7, 13, 12, 11, 14, 12, 12, 12, 14, 15, 34, 24], rows, freeze: "B5", heights },
       { name: "Costo para EduPan", cols: [26, 14, 18, 14, 14, 16, 14], rows: prov, freeze: "B5" },
     ];
   }
@@ -2231,12 +2397,12 @@
     const sinRol = db.locales.filter((l) => db.empleados.some((e) => e.activo !== false && e.localId === l.id && e.frecuencia === "MENSUAL" && e.ingreso <= F.lastDay(mesAnt)) && !db.reportes.some((r) => r.tipo === "ROL" && r.localId === l.id && r.mes === mesAnt && r.tramo === "M") && (ui.local === "todos" || l.id === ui.local));
     const sinDetPct = s.caja ? s.sinDetallar / s.caja : 0;
     const alerts = [
-      !data.DEMO && isAdmin() && db.reportes.length && (backupDays() === null || backupDays() > 7) ? alert("warn", "clock", `<b>Respaldo semanal pendiente:</b> ${db.ultimoRespaldo ? `el último fue hace ${backupDays()} días` : "aún no has descargado ninguno"}. <a href="#ajustes">Ir a Ajustes</a>`) : "",
+      !data.DEMO && isAdmin() && db.reportes.length && (backupDays() === null || backupDays() > 7) ? alert("warn", "clock", `<b>Respaldo semanal pendiente:</b> ${ultimoRespaldoAny() ? `el último fue hace ${backupDays()} días` : "aún no has descargado ninguno"}. <a href="#ajustes">Ir a Ajustes</a>`) : "",
       ...faltan.map((x) => alert("warn", "warn", `<b>Falta el reporte diario de ${esc(x.l.nombre)}:</b> ${x.d.slice().reverse().map((d) => fmt.short(d)).join(", ")}. <a href="#diario">Ir a reportes diarios</a>`)),
       ...rolBorr.map((r) => alert("warn", "clock", `<b>Rol de pagos sin aprobar:</b> ${esc(local(r.localId).nombre)}, ${esc(r.periodoTxt)}. No cuenta como gasto hasta aprobarlo. <a href="#personal" data-route="personal" data-open="${r.id}">Abrir</a>`)),
       sinRol.length && diaHoy >= 3 ? alert("", "personal", `<b>Rol de ${mesTxt(mesAnt).toLowerCase()} pendiente:</b> ${sinRol.map((l) => esc(l.nombre)).join(", ")}. Sin rol, la utilidad no descuenta los sueldos. <a href="#personal" data-f="go-roles">Ir a roles</a>`) : "",
       ...PPX.pagos.pendientes(db).filter((p) => ui.local === "todos" || p.localId === ui.local).map((p) => { const d = PPX.pagos.faltan(p); return alert(d < 0 ? "bad" : "warn", "pagos", `<b>${esc(p.concepto)}</b> (${esc(local(p.localId).nombre)}): ${PPX.pagos.estadoTxt(d).toLowerCase()}, ${fmt.date(p.proximo)}${p.monto ? ` · ${fmt.money(p.monto)}` : ""}. ${isAdmin() ? `<a role="button" tabindex="0" class="lnk" data-f="pago-pay" data-id="${p.id}">Registrar pago</a>` : ""}`); }),
-      s.sueldosEst > 0 ? alert("", "personal", `<b>Sueldos estimados: ${fmt.money(s.sueldosEst)}.</b> Hay días de este período sin rol de pagos aprobado; se calculan con el costo mensual de cada trabajador. Al aprobar el rol se usa el valor exacto. <a href="#personal" data-f="go-roles">Ir a roles</a>`) : "",
+      ...db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "CONFIRMADO" && !r.pago && (ui.local === "todos" || r.localId === ui.local)).map((r) => alert("warn", "personal", `<b>Rol aprobado sin pagar:</b> ${esc(local(r.localId).nombre)}, ${esc(r.periodoTxt)} (neto ${fmt.money(F.rolTotals(r).neto)}). Se descuenta del reporte diario cuando registres el pago. ${isAdmin() ? `<a role="button" tabindex="0" class="lnk" data-f="rol-pagar" data-id="${r.id}">Registrar pago</a>` : ""}`)),
       sinDetPct > 0.5 && s.caja > 0 ? alert("", "tag", `<b>${fmt.pct(sinDetPct)} de los egresos están sin detallar.</b> Si se registran por categoría, sabrás en qué se va el dinero. <a href="#diario">Ir a reportes diarios</a>`) : "",
     ].filter(Boolean);
 
@@ -2263,7 +2429,7 @@
         <span class="sub">${sp.ingresos ? dTxt(delta(s.ingresos, sp.ingresos), "frente al período anterior") : `${s.reportes} reporte${s.reportes === 1 ? "" : "s"} diario${s.reportes === 1 ? "" : "s"}`}</span>
         <div class="spark">${sparkline(trend.map((x) => ({ v: x.ingresos })), "#E3B263")}</div></div>
       <div class="kpi"><span class="eyebrow">Egresos</span><span class="val num" data-count="${s.egresos}" data-fmt="money">${fmt.money(s.egresos)}</span>
-        <span class="sub">Del día ${fmt.money(s.caja)} · sueldos ${fmt.money(s.sueldos)}${s.sueldosEst ? ` (${fmt.money(s.sueldosEst)} estimado)` : ""}</span><div class="spark">${sparkline(trend.map((x) => ({ v: x.egresos })), "var(--s2)")}</div></div>
+        <span class="sub">Del día ${fmt.money(s.caja)} · sueldos ${fmt.money(s.sueldos)}</span><div class="spark">${sparkline(trend.map((x) => ({ v: x.egresos })), "var(--s2)")}</div></div>
       <div class="kpi"><span class="eyebrow">Utilidad</span><span class="val num ${s.utilidad < 0 ? "" : "good"}" style="${s.utilidad < 0 ? "color:var(--bad)" : ""}" data-count="${s.utilidad}" data-fmt="money">${fmt.money(s.utilidad)}</span>
         <span class="sub">${isFinite(s.margen) ? `${fmt.pct(s.margen)} de los ingresos` : "Ingresos − egresos"}${sp.ingresos ? " · " + dTxt(delta(s.utilidad, sp.utilidad), "") : ""}</span><div class="spark">${sparkline(trend.map((x) => ({ v: x.utilidad })), "var(--good)")}</div></div>
       ${ui.local === "todos" && totIng > 0 ? `<div class="kpi"><span class="eyebrow">Local con más utilidad</span><span class="val val-name">${esc(best.l.nombre)}</span>
@@ -2315,96 +2481,8 @@
   }
 
   /* ---------- Excel: hojas de finanzas ---------- */
-  function finSheets(range, locs, head) {
-    const H = ui.inf.hojas, out = [], X = PPX.excel, C = X.colName, ids = locs.map((l) => l.id);
-    const inLocs = (r) => ids.includes(r.localId);
-    if (H.finanzas) {
-      const rows = head("EduPan Panaderías · Estado de resultados");
-      rows.push([{ v: "Concepto", s: "header" }, ...locs.map((l) => ({ v: l.nombre, s: "headerR" })), { v: "Total EduPan", s: "headerR" }]);
-      const d = locs.map((l) => F.summary(db, range, l.id)), n = locs.length, R = {};
-      const add = (k, label, vals, st, formula) => {
-        const r = rows.length + 1; R[k] = r;
-        const row = [{ v: label, s: k === "util" ? "totalLabel" : "bold" }];
-        const stOf = (v) => (st === "moneyGood" && v < 0 ? "moneyBad" : st);
-        vals.forEach((v, i) => row.push(formula ? { v, s: stOf(v), f: formula(C(i + 1)) } : { v, s: stOf(v) }));
-        row.push(formula ? { v: round2(vals.reduce((a, b) => a + (Number(b) || 0), 0)), s: st === "pct" ? "totalPct" : "totalMoney", f: formula(C(n + 1)) } : { v: round2(vals.reduce((a, b) => a + b, 0)), s: st === "int" ? "totalInt" : "totalMoney", f: `SUM(${C(1)}${r}:${C(n)}${r})` });
-        rows.push(row);
-      };
-      add("ing", "Ingresos", d.map((x) => x.ingresos), "money");
-      add("caja", "(−) Egresos de los reportes diarios", d.map((x) => x.caja), "money");
-      add("sue", "(−) Sueldos y beneficios (roles aprobados)", d.map((x) => x.sueldos), "money");
-      add("eg", "Total egresos", d.map((x) => x.egresos), "money", (c) => `${c}${R.caja}+${c}${R.sue}`);
-      add("util", "Utilidad", d.map((x) => x.utilidad), "moneyGood", (c) => `${c}${R.ing}-${c}${R.eg}`);
-      add("mar", "Margen sobre ingresos", d.map((x) => (x.ingresos ? x.utilidad / x.ingresos : "")), "pct", (c) => `IF(${c}${R.ing}=0,"",${c}${R.util}/${c}${R.ing})`);
-      add("dias", "Días reportados", d.map((x) => x.dias), "int");
-      rows.push([]);
-      rows.push([{ v: "Ingresos por categoría", s: "section" }]);
-      rows.push([{ v: "Categoría", s: "header" }, ...locs.map((l) => ({ v: l.nombre, s: "headerR" })), { v: "Total", s: "headerR" }]);
-      const perLocIng = Object.fromEntries(locs.map((l) => [l.id, new Map(F.ingresosPorCategoria(db, range, l.id).map((c) => [c.id, c.v]))]));
-      const ingIds = [...new Set(locs.flatMap((l) => [...perLocIng[l.id].keys()]))];
-      const i0 = rows.length + 1;
-      for (const id of ingIds) { const r = rows.length + 1, vals = locs.map((l) => perLocIng[l.id].get(id) || 0); rows.push([catName(id), ...vals.map((v) => ({ v, s: "money" })), { v: round2(vals.reduce((a, b) => a + b, 0)), s: "totalMoney", f: `SUM(${C(1)}${r}:${C(n)}${r})` }]); }
-      if (ingIds.length) { const r = rows.length + 1; rows.push([{ v: "Total", s: "totalLabel" }, ...d.map((x, i) => ({ v: x.ingresos, s: "totalMoney", f: `SUM(${C(i + 1)}${i0}:${C(i + 1)}${r - 1})` })), { v: round2(d.reduce((a, x) => a + x.ingresos, 0)), s: "totalMoney", f: `SUM(${C(n + 1)}${i0}:${C(n + 1)}${r - 1})` }]); }
-      rows.push([]);
-      rows.push([{ v: "Egresos por categoría", s: "section" }]);
-      rows.push([{ v: "Categoría", s: "header" }, ...locs.map((l) => ({ v: l.nombre, s: "headerR" })), { v: "Total", s: "headerR" }]);
-      const allCats = F.byCategoria(F.egresos(db, range, "todos").filter((e) => ids.includes(e.localId)));
-      const c0 = rows.length + 1;
-      for (const c of allCats) { const r = rows.length + 1; rows.push([catName(c.id), ...locs.map((l) => ({ v: round2(F.egresos(db, range, l.id).filter((e) => e.categoriaId === c.id).reduce((a, e) => a + e.monto, 0)), s: "money" })), { v: c.v, s: "totalMoney", f: `SUM(${C(1)}${r}:${C(n)}${r})` }]); }
-      if (allCats.length) { const r = rows.length + 1; rows.push([{ v: "Total", s: "totalLabel" }, ...d.map((x, i) => ({ v: x.egresos, s: "totalMoney", f: `SUM(${C(i + 1)}${c0}:${C(i + 1)}${r - 1})` })), { v: round2(d.reduce((a, x) => a + x.egresos, 0)), s: "totalMoney", f: `SUM(${C(n + 1)}${c0}:${C(n + 1)}${r - 1})` }]); }
-      rows.push([]);
-      rows.push([{ v: "Utilidad = ingresos − egresos de los reportes diarios − sueldos. Los sueldos incluyen el aporte patronal, los décimos y los fondos de reserva de quienes los reciben.", s: "sub" }]);
-      out.push({ name: "Resultados", cols: [44, ...locs.map(() => 18), 18], rows, freeze: "B6" });
-    }
-    if (H.diario) {
-      const rows = head("Reportes diarios (como el Excel de caja)");
-      rows.push([{ v: "Fecha", s: "header" }, ...locs.flatMap((l) => [{ v: `${l.nombre} · ingresos`, s: "headerR" }, { v: `${l.nombre} · egresos`, s: "headerR" }]), { v: "Total ingresos", s: "headerR" }, { v: "Total egresos", s: "headerR" }, { v: "Queda", s: "headerR" }]);
-      const cajas = db.reportes.filter((r) => r.tipo === "CAJA" && r.hasta >= range[0] && r.hasta <= range[1] && inLocs(r));
-      const fechas = [...new Set(cajas.map((r) => r.hasta))].sort(), first = rows.length + 1, n2 = locs.length * 2;
-      const colSum = Array(n2 + 3).fill(0);
-      for (const fch of fechas) {
-        const r = rows.length + 1, row = [{ v: fch, s: "date" }];
-        let ti = 0, te = 0;
-        locs.forEach((l, i) => { const c = cajas.find((x) => x.hasta === fch && x.localId === l.id); const vi = c ? Number(c.ingresos) || 0 : 0, ve = c ? F.cajaEgresos(c) : 0; ti += vi; te += ve; colSum[i * 2] += vi; colSum[i * 2 + 1] += ve; row.push(c ? { v: vi, s: "money" } : null, c ? { v: ve, s: "money" } : null); });
-        const ingC = locs.map((_, i) => `N(${C(1 + i * 2)}${r})`).join("+"), egC = locs.map((_, i) => `N(${C(2 + i * 2)}${r})`).join("+");
-        colSum[n2] += ti; colSum[n2 + 1] += te; colSum[n2 + 2] += ti - te;
-        row.push({ v: round2(ti), s: "money", f: ingC }, { v: round2(te), s: "money", f: egC }, { v: round2(ti - te), s: "money", f: `${C(n2 + 1)}${r}-${C(n2 + 2)}${r}` });
-        rows.push(row);
-      }
-      const last = rows.length;
-      if (fechas.length) rows.push([{ v: "Total", s: "totalLabel" }, ...colSum.map((v, i) => ({ v: round2(v), s: "totalMoney", f: `SUM(${C(i + 1)}${first}:${C(i + 1)}${last})` }))]);
-      rows.push([]);
-      rows.push([{ v: "Detalle por categoría", s: "section" }]);
-      rows.push(["Fecha", "Local", "Tipo", "Categoría", "Monto", "Observación"].map((v, i) => ({ v, s: i === 4 ? "headerR" : "header" })));
-      for (const r of cajas.sort((a, b) => a.hasta.localeCompare(b.hasta) || locIdx(a.localId) - locIdx(b.localId))) {
-        for (const l of (r.ingLineas && r.ingLineas.length ? r.ingLineas : [{ categoriaId: "", monto: r.ingresos }])) if (Number(l.monto)) rows.push([{ v: r.hasta, s: "date" }, local(r.localId).nombre, "Ingreso", catName(l.categoriaId), { v: Number(l.monto), s: "money" }, r.obs || ""]);
-        for (const l of r.lineas) rows.push([{ v: r.hasta, s: "date" }, local(r.localId).nombre, "Egreso", catName(l.categoriaId), { v: l.monto, s: "moneyBad" }, r.obs || ""]);
-      }
-      out.push({ name: "Reportes diarios", cols: [14, ...Array(n2).fill(16), 16, 16, 14], rows, freeze: "B6" });
-    }
-    if (H.gastos) {
-      const rows = head("Egresos");
-      rows.push(["Fecha", "Local", "Categoría", "Origen", "Detalle", "Monto"].map((v, i) => ({ v, s: i === 5 ? "headerR" : "header" })));
-      const first = rows.length + 1;
-      const eg = F.egresos(db, range, "todos").filter((e) => ids.includes(e.localId)).sort((a, b) => a.fecha.localeCompare(b.fecha));
-      for (const e of eg) rows.push([{ v: e.fecha, s: "date" }, local(e.localId).nombre, catName(e.categoriaId), ORIGEN[e.origen][0], e.origen === "caja" ? e.detalle || (e.r && e.r.obs) || "" : e.detalle || "", { v: e.monto, s: "money" }]);
-      const last = rows.length;
-      if (eg.length) rows.push([{ v: "Total", s: "totalLabel" }, "", "", "", "", { v: round2(eg.reduce((a, e) => a + e.monto, 0)), s: "totalMoney", f: `SUM(F${first}:F${last})` }]);
-      out.push({ name: "Egresos", cols: [12, 14, 28, 16, 40, 14], rows, freeze: "A6", filter: eg.length ? `A5:F${last}` : null });
-    }
-    if (H.roles) {
-      const rows = head("Roles de pago aprobados");
-      rows.push(["Período", "Local", "Trabajador", "Cargo", "Días", "Ingresos", "IESS personal", "Anticipos y otros", "Neto pagado", "Aporte patronal", "Décimos y fondos", "Costo para EduPan"].map((v, i) => ({ v, s: i >= 4 ? "headerR" : "header" })));
-      const first = rows.length + 1;
-      const roles = db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "CONFIRMADO" && r.hasta >= range[0] && r.hasta <= range[1] && inLocs(r)).sort((a, b) => a.hasta.localeCompare(b.hasta));
-      const tot = Array(7).fill(0);
-      for (const r of roles) for (const l of r.lineas) { const vals = [l.total, l.iessP, round2(l.anticipos + l.otros), l.neto, l.patronal, round2(l.d13 + l.d14 + l.fondos + l.vac), l.costo]; vals.forEach((v, i) => { tot[i] += v; }); rows.push([r.periodoTxt, local(r.localId).nombre, l.nombre, l.cargo || "", { v: l.dias, s: "int" }, ...vals.map((v) => ({ v, s: "money" }))]); }
-      const last = rows.length;
-      if (last >= first) rows.push([{ v: "Total", s: "totalLabel" }, "", "", "", "", ...[5, 6, 7, 8, 9, 10, 11].map((c, i) => ({ v: round2(tot[i]), s: "totalMoney", f: `SUM(${C(c)}${first}:${C(c)}${last})` }))]);
-      out.push({ name: "Roles de pago", cols: [24, 14, 24, 20, 7, 13, 13, 14, 13, 14, 18, 15], rows, freeze: "A6" });
-    }
-    return out;
-  }
+  /** Hojas de finanzas del Excel (las mismas que llegan por correo cada mes). */
+  function finSheets(range, locs, head) { return PPX.informe.finSheets(db, range, locs, ui.inf.hojas, head); }
 
   /* ---------- Eventos de finanzas ---------- */
   // Tocar en el menú la sección donde ya estás vuelve a su pantalla principal
@@ -2441,13 +2519,27 @@
       case "cat-del": { if (!isAdmin()) return; const c = db.categorias.find((x) => x.id === ds.id); db.categorias = db.categorias.filter((x) => x.id !== ds.id); audit("Categoría eliminada", c.nombre); save(); render(); return toast("Categoría eliminada"); }
       case "emp-new": return openEmpDialog(null);
       case "emp-edit": return openEmpDialog(ds.id);
-      case "rol-new": if (!isAdmin()) return; ui.rolNew = { mes: addMes(curMes(), Number(today().slice(8)) >= 25 ? 0 : -1), tramo: "M", localId: ui.perLocal && ui.perLocal !== "todos" ? ui.perLocal : db.locales[0].id }; return render();
+      case "rol-new": { if (!isAdmin()) return; const d = new Date(today() + "T12:00:00"), lunes = addDays(today(), -((d.getDay() + 6) % 7) - 7);
+        ui.rolNew = { mes: addMes(curMes(), Number(today().slice(8)) >= 25 ? 0 : -1), tramo: "M", localId: ui.perLocal && ui.perLocal !== "todos" ? ui.perLocal : db.locales[0].id, desde: lunes, hasta: today() }; return render(); }
+      case "rol-pagar": return openRolPago(ds.id);
+      case "mov-new": return openMovDialog(null);
+      case "mov-edit": return openMovDialog(ds.id);
       case "rol-new-cancel": ui.rolNew = null; return render();
       case "rol-cancel": ui.rolDraft = null; return render();
       case "rol-back": ui.viewId = null; return render();
       case "rol-save": return saveRol(ds.v);
       case "rol-edit": { const r = db.reportes.find((x) => x.id === ds.id); ui.rolDraft = newRolDraft(r); ui.viewId = null; return render(); }
-      case "rol-reopen": { const r = db.reportes.find((x) => x.id === ds.id); r.estado = "BORRADOR"; r.aprobado = null; audit("Rol de pagos reabierto", `${local(r.localId).nombre} · ${r.periodoTxt} · deja de contar como gasto hasta aprobarlo de nuevo`); save(); ui.rolDraft = newRolDraft(r); ui.viewId = null; render(); return toast("Rol reabierto"); }
+      case "rol-reopen": ui.rolReopen = ds.id; return render();
+      case "rol-reopen-no": ui.rolReopen = null; return render();
+      case "rol-reopen-ok": {
+        const r = db.reportes.find((x) => x.id === ds.id); ui.rolReopen = null;
+        const pago = r.pago; quitarDeCaja((l) => l.rolId === r.id);
+        r.estado = "BORRADOR"; r.aprobado = null; r.pago = null;
+        const draft = newRolDraft(r);
+        for (const m of db.adelantos) if (m.rolId === r.id) m.rolId = null;
+        audit("Rol de pagos reabierto", `${local(r.localId).nombre} · ${r.periodoTxt}${pago ? ` · se quitó el pago del ${fmt.date(pago.fecha)} del reporte diario` : ""}`);
+        save(); ui.rolDraft = draft; ui.viewId = null; render(); return toast("Rol reabierto");
+      }
       case "rol-del": ui.rolConfirm = ds.id; return render();
       case "rol-del-no": ui.rolConfirm = null; return render();
       case "rol-del-ok": { const r = db.reportes.find((x) => x.id === ds.id); if (!r || r.estado !== "BORRADOR") return; db.reportes = db.reportes.filter((x) => x.id !== r.id); audit("Rol de pagos eliminado", `${local(r.localId).nombre} · ${r.periodoTxt}`); ui.rolConfirm = null; ui.viewId = null; save(); render(); return toast("Rol eliminado"); }
@@ -2464,6 +2556,7 @@
   });
   document.addEventListener("change", (e) => {
     const t = e.target;
+    if (t.id === "rn-tramo" && ui.rolNew) { ui.rolNew.tramo = t.value; ui.rolNew.localId = $("#rn-local").value; return render(); }
     if (t.dataset.pf) { ui[t.dataset.pf] = t.value; ui.prodLimit = 60; ui.invLimit = 60; return render(); }
     if (t.id === "imp-file" && t.files[0]) { const f = t.files[0]; t.value = ""; return openImportDialog(f); }
     if (t.dataset.rol && ui.rolDraft) {
@@ -2489,17 +2582,26 @@
     }
     if (f.id === "rolnew-form") {
       e.preventDefault(); if (!isAdmin()) return;
-      const mes = $("#rn-mes").value, tramo = $("#rn-tramo").value, localId = $("#rn-local").value, errs = [];
-      ui.rolNew = { mes, tramo, localId };
-      if (!/^\d{4}-\d{2}$/.test(mes)) errs.push("Elige el mes.");
+      const tramo = $("#rn-tramo").value, localId = $("#rn-local").value, errs = [];
+      const mes = $("#rn-mes")?.value || ui.rolNew.mes, desde = $("#rn-desde")?.value || ui.rolNew.desde, hasta = tramo === "D" ? $("#rn-hasta")?.value || desde : ui.rolNew.hasta;
+      ui.rolNew = { mes, tramo, localId, desde, hasta };
+      if ((tramo === "M" || tramo[0] === "Q") && !/^\d{4}-\d{2}$/.test(mes)) errs.push("Elige el mes.");
+      else if ((tramo === "S" || tramo === "D") && !desde) errs.push("Elige la fecha.");
+      else if (tramo === "D" && hasta < desde) errs.push("«Hasta» no puede ser antes de «Desde».");
+      else if (tramo === "D" && F.periodoRol({ tramo, desde, hasta }).dias > 31) errs.push("Un rol diario puede cubrir hasta 31 días.");
       else {
-        const per = F.periodo(mes, tramo), freq = tramo === "M" ? "MENSUAL" : "QUINCENAL";
-        if (db.reportes.some((r) => r.tipo === "ROL" && r.localId === localId && r.mes === mes && r.tramo === tramo)) errs.push(`Ya existe el rol de ${per.txt} para ${local(localId).nombre}. Ábrelo desde la lista.`);
-        const emps = db.empleados.filter((x) => x.activo !== false && x.localId === localId && x.frecuencia === freq && (!x.ingreso || x.ingreso <= per.hasta));
-        if (!emps.length) errs.push(`${local(localId).nombre} no tiene trabajadores activos que cobren ${freq === "MENSUAL" ? "mensual" : "quincenal"}. Revísalo en la pestaña Trabajadores.`);
+        const per = F.periodoRol({ tramo, mes, desde, hasta }), freq = TRAMO_FREQ[tramo];
+        if (db.reportes.some((r) => r.tipo === "ROL" && r.localId === localId && r.desde === per.desde && r.hasta === per.hasta && (TRAMO_FREQ[r.tramo] || "MENSUAL") === freq)) errs.push(`Ya existe ese rol (${per.txt}) para ${local(localId).nombre}. Ábrelo desde la lista.`);
+        const emps = db.empleados.filter((x) => x.activo !== false && x.localId === localId && (x.frecuencia || "MENSUAL") === freq && (!x.ingreso || x.ingreso <= per.hasta));
+        if (!emps.length) errs.push(`${local(localId).nombre} no tiene trabajadores activos con pago ${FREQ[freq].toLowerCase()}. Revísalo en la pestaña Trabajadores.`);
         if (!errs.length) {
-          const snap = {}, inp = {}; emps.forEach((x) => { snap[x.id] = { ...x }; inp[x.id] = { dias: x.ingreso > per.desde ? Math.max(0, Math.round((new Date(per.hasta) - new Date(x.ingreso)) / 864e5) + 1) : "", h50: "", h100: "", bonos: "", anticipos: "", otros: "" }; });
-          ui.rolDraft = { localId, mes, tramo, snap, inp, ids: emps.map((x) => x.id) }; ui.rolNew = null; return render();
+          const snap = {}, inp = {}, movs = {};
+          emps.forEach((x) => {
+            const pend = movPend(x.id), sum = (t) => round2(pend.filter((m) => m.tipo === t).reduce((a, m) => a + m.monto, 0));
+            snap[x.id] = { ...x }; movs[x.id] = pend.map((m) => m.id);
+            inp[x.id] = { dias: x.ingreso > per.desde ? Math.max(0, Math.round((new Date(per.hasta) - new Date(x.ingreso)) / 864e5) + 1) : "", h50: "", h100: "", bonos: "", anticipos: sum("ADELANTO") || "", otros: sum("DESCUENTO") || "" };
+          });
+          ui.rolDraft = { localId, mes: per.hasta.slice(0, 7), tramo, per, snap, inp, movs, ids: emps.map((x) => x.id) }; ui.rolNew = null; return render();
         }
       }
       $("#rn-err").innerHTML = errBox(errs);
@@ -2663,11 +2765,22 @@
 
   /* ---------- Ajustes ---------- */
   const canManageUsers = () => isAdmin() && (data.DEMO || !!session.duena);
-  const backupDays = () => (db.ultimoRespaldo ? Math.floor((Date.now() - new Date(db.ultimoRespaldo).getTime()) / 86400000) : null);
+  /** Último envío automático por correo (lo registra el script de Google en la actividad). */
+  const ultimoAuto = (accion) => db.auditoria.filter((a) => a.accion === accion).map((a) => a.fecha).sort().pop() || null;
+  const ultimoRespaldoAny = () => [db.ultimoRespaldo, ultimoAuto("Respaldo enviado por correo")].filter(Boolean).sort().pop() || null;
+  const backupDays = () => { const u = ultimoRespaldoAny(); return u ? Math.floor((Date.now() - new Date(u).getTime()) / 86400000) : null; };
   function backupNote() {
-    const d = backupDays();
+    const d = backupDays(), auto = ultimoAuto("Respaldo enviado por correo");
     if (d === null) return `<div class="note warn">Todavía no has descargado ningún respaldo.</div>`;
-    return `<div class="note ${d > 7 ? "warn" : "good"}">Último respaldo descargado: <b>${fmt.stamp(db.ultimoRespaldo)}</b>${d > 7 ? ` (hace ${d} días). Descarga uno nuevo.` : ""}</div>`;
+    const txt = auto && auto === ultimoRespaldoAny() ? `Último respaldo enviado por correo: <b>${fmt.stamp(auto)}</b>` : `Último respaldo descargado: <b>${fmt.stamp(db.ultimoRespaldo)}</b>`;
+    return `<div class="note ${d > 7 ? "warn" : "good"}">${txt}${d > 7 ? ` (hace ${d} días). Descarga uno nuevo.` : ""}</div>`;
+  }
+  function autoNote() {
+    const r = ultimoAuto("Respaldo enviado por correo"), i = ultimoAuto("Informe mensual enviado por correo");
+    const fila = (t, f, cada) => `<div class="alert"><span class="ic">${ICON.informes}</span><span><b>${t}</b> · ${cada}<br><span class="muted small">${f ? `Último envío: ${fmt.stamp(f)}` : "Aún no se ha enviado ninguno"}</span></span></div>`;
+    return `<div style="display:grid;gap:10px"><h3>Envíos automáticos por correo</h3>
+      <div class="alerts">${fila("Respaldo de la base de datos", r, "cada semana")}${fila("Informe del mes anterior en Excel", i, "el día 1 de cada mes")}</div>
+      ${!r && !i ? `<p class="muted small">Se activan una sola vez con Google Apps Script, siguiendo la sección «Envíos automáticos por correo» de la guía (GUIA-PASO-A-PASO.html). Llegan desde tu Gmail y no tienen costo.</p>` : ""}</div>`;
   }
   function viewAjustes() {
     return `
@@ -2708,6 +2821,7 @@
         <label class="btn" for="restore-file">Restaurar un respaldo</label><input id="restore-file" type="file" accept="application/json,.json" hidden>
       </div>
       <div id="restore-box"></div>` : ""}
+      ${autoNote()}
     </section>
     <section class="card" style="display:grid;gap:14px"><div><h2>Tu cuenta</h2><p class="muted small">Entraste como <b>${esc(session.email)}</b>.</p></div>
       ${(session.proveedores || []).includes("password")

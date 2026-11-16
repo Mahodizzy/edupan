@@ -1,4 +1,4 @@
-# EduPan · Panel de control (PPX) — versión 3.2 (en línea: reportes diarios, pagos programados, inventario y personal)
+# EduPan · Panel de control (PPX) — versión 3.4 (en línea: reportes diarios, pagos programados, inventario y personal)
 
 Panel web para que la administradora de EduPan registre las ventas, la producción,
 las compras a proveedores y las pérdidas de **Matriz, Sucursal 1 y Sucursal 2** (dos
@@ -52,13 +52,16 @@ Los archivos JavaScript se cargan en este orden: `config.js` → `core.js` → `
    crear una categoría nueva con «+ Nueva categoría…». Se ve como una tabla del mes:
    filas = días, columnas = locales; tocar una celda abre el día para corregirlo.
    La pestaña *Categorías* sirve para renombrar, desactivar o crear categorías.
-2. **Personal:** ficha de cada trabajador (local, cargo, sueldo, mensual o quincenal, fecha
-   de ingreso) y qué recibe: afiliación al IESS, décimos (y si se los pagan cada mes) y
-   fondos de reserva. Un trabajador sin IESS ni beneficios cuesta solo su sueldo.
-   **Roles de pago** por local y período: días, horas extra, bonos, anticipos y descuentos;
-   calcula el neto a recibir y el costo real. Al **aprobarlo**, su costo cuenta como egreso
-   de sueldos del local (por eso los sueldos no se ponen en el reporte diario).
-   Los valores de ley (salario básico 2026 = $482, % IESS) se editan en *Valores de ley*.
+2. **Personal:** ficha de cada trabajador (local, cargo, frecuencia de pago **diario, semanal,
+   quincenal o mensual**, sueldo mensual o pago por día, fecha de ingreso) y qué recibe:
+   IESS, décimos y fondos de reserva.
+   - **Adelantos y descuentos:** cada uno con monto, fecha y motivo (obligatorio en los
+     descuentos). Un adelanto que sale de caja queda como egreso en el reporte diario de ese
+     día. Todo lo pendiente se descuenta solo en el próximo rol del trabajador.
+   - **Roles de pago** (mensual, 1.ª/2.ª quincena, semana o días): calcula neto y costo real.
+     Al aprobarlo se **registra el pago**: el neto (y si se elige, los aportes al IESS) se
+     descuenta del **reporte diario del día en que se paga**. Así el informe cuenta los
+     sueldos ese día. Reabrir un rol pagado quita ese pago del reporte.
 3. **Pagos programados:** arriendo, luz, agua, internet, facturas de proveedores… con su
    fecha, local, categoría, monto aproximado y si se repite (cada semana, 15 días, mes, año
    o una sola vez). **Desde 3 días antes** (y si ya venció), cada vez que se entra al panel
@@ -74,9 +77,8 @@ Los archivos JavaScript se cargan en este orden: `config.js` → `core.js` → `
    categoría; entradas, pérdidas y conteos físicos.
 6. **Panel:** ingresos, egresos, **utilidad** y el local que más deja, con gráficos y el
    estado de resultados por local: **Utilidad = ingresos − egresos del día − sueldos.**
-   Los sueldos salen de los roles aprobados, repartidos por días (un rol de octubre cuenta
-   28/31 si se mira hasta el 28). Si hay días sin rol aprobado, se **estiman** con el costo
-   mensual de cada trabajador activo y el panel lo indica; al aprobar el rol se usa el valor exacto.
+   Los sueldos cuentan el día en que se pagan (pago del rol, adelantos y aportes al IESS).
+   Un rol aprobado pero sin pagar aparece como aviso en el panel.
 7. **Informes:** Excel con *Estado de resultados* (con ingresos y egresos por categoría),
    *Reportes diarios*, *Egresos* y *Roles de pago*.
 
@@ -131,6 +133,10 @@ alguna cifra. Cada hoja tiene filtros y la fila de encabezado fija.
   lo hacen cumplir en el servidor, no solo en la pantalla.
 - **Contraseña olvidada:** «¿Olvidaste tu contraseña?» en la entrada envía un enlace al correo.
 - **Respaldo:** Ajustes → Descargar respaldo, una vez por semana (el panel avisa).
+- **Envíos automáticos por correo** (carpeta `envios-automaticos/`): con Google Apps Script,
+  gratis, llega el respaldo cada lunes y el informe del mes anterior (resumen + Excel) cada
+  día 1. Se instala una vez: guía, paso 10 C. Usa `assets/js/informe.js`, el mismo código del
+  Excel de Informes, así que el correo y el panel siempre coinciden.
   Opcional: copias automáticas de Firebase con el plan Blaze (ver la guía, paso 10).
 - **Actividad:** cada registro, cambio, respaldo y acceso queda en Ajustes → Actividad,
   y no se puede borrar.

@@ -46,7 +46,7 @@
       <li>Autorizar la dirección de Netlify en Firebase</li>
       <li>Primer ingreso de Ely</li>
       <li>Dar acceso al jefe</li>
-      <li>Respaldos</li>
+      <li>Respaldos y envíos automáticos por correo</li>
       <li>Cómo actualizar la página después</li>
       <li>Si algo falla</li>
     </ol>
@@ -178,7 +178,7 @@ appId: "1:1234567890:web:abc123..."</pre></li>
       <li>La primera vez el sistema crea los 3 locales y las categorías. Verás el panel vacío con los pasos para empezar.</li>
       <li>En <b>Productos</b> toca <b>Cargar productos</b>, elige a qué local pertenece el stock del Excel y confirma: se cargan los 282 productos de EduPan. Más adelante, con <b>Importar Excel</b> puedes subir un reporte más nuevo del sistema de la empresa.</li>
       <li>En <b>Pagos programados</b> agrega el arriendo, la luz, el agua, el internet y las facturas de proveedores con su fecha. Desde 3 días antes te aparecerá el aviso al entrar.</li>
-      <li>Luego usa <b>Reportes diarios → Registrar día</b> y <b>Personal</b> (trabajadores y rol de pagos).</li>
+      <li>Luego usa <b>Reportes diarios → Registrar día</b> y <b>Personal</b> (trabajadores, adelantos y descuentos, y rol de pagos: al registrar el pago, el sueldo se descuenta del reporte diario de ese día).</li>
     </ol>
     <div class="tip"><b>¿Qué pasa si otra persona intenta entrar con su Google?</b> Google la identifica, pero el panel la rechaza al instante («Acceso denegado»), cierra la sesión y no ve ningún dato. Además, las reglas de la base de datos bloquean cualquier lectura o escritura que no venga de un correo autorizado. No existe la opción de «crear cuenta» en la página.</div>
     <div class="tip"><b>Si alguien no tiene Gmail</b> (por ejemplo, un correo de Hotmail): créale la cuenta tú en Firebase → <b class="ui">Authentication → Usuarios → Agregar usuario</b> (correo y una contraseña temporal). Al entrar por primera vez, el panel le pedirá confirmar su correo con un enlace, y con <b class="ui">¿Olvidaste tu contraseña?</b> pone la suya. Ese correo igual tiene que estar autorizado (como administrador fijo o como lector en Ajustes).</div>
@@ -211,6 +211,18 @@ appId: "1:1234567890:web:abc123..."</pre></li>
       <li>Abre <a href="https://console.cloud.google.com/firestore/databases" target="_blank" rel="noopener">console.cloud.google.com/firestore/databases</a> (elige el proyecto edupan-ppx) → base <code>(default)</code> → sección <b class="ui">Recuperación ante desastres / Backups</b> → <b class="ui">Editar</b> la programación: activa la copia <b>diaria</b> y/o <b>semanal</b> y la retención.</li>
     </ol>
     <p style="font-size:.9rem;color:var(--muted)">Fuente: <a href="https://firebase.google.com/docs/firestore/backups" target="_blank" rel="noopener">Firebase · Back up and restore data</a> (requiere Blaze; retención máxima de 14 semanas; se cobra el almacenamiento de cada copia).</p>
+    <h3 id="envios">C. Envíos automáticos por correo (gratis)</h3>
+    <p>Un pequeño programa de Google (Apps Script) envía solo, desde tu Gmail: el <b>respaldo cada lunes</b> y el <b>informe del mes anterior cada día 1</b>. El informe trae el resumen en el correo y el mismo Excel de la sección Informes. El programa solo <b>lee</b> los datos; lo único que escribe es una línea en el registro de actividad para que el panel muestre el último envío. Se hace una sola vez, en unos 10 minutos.</p>
+    <ol>
+      <li>Abre <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> con la <b>cuenta de Google que creó el proyecto de Firebase</b> (la que ve <code>edupan-e58ca</code> en console.firebase.google.com). Toca <b class="ui">Nuevo proyecto</b> y ponle de nombre <b>EduPan envíos</b> (arriba, donde dice «Proyecto sin título»).</li>
+      <li>Borra todo lo que trae el archivo <code>Código.gs</code> y pega el contenido completo de <code>envios-automaticos/Codigo.gs</code> (ábrelo con el Bloc de notas, Ctrl+A, Ctrl+C).</li>
+      <li>A la izquierda, ⚙️ <b class="ui">Configuración del proyecto</b> → marca <b class="ui">Mostrar el archivo de manifiesto «appsscript.json» en el editor</b>. Vuelve al editor (icono <b class="ui">&lt;&gt;</b>), abre <code>appsscript.json</code> y reemplaza su contenido por el de <code>envios-automaticos/appsscript.json</code>.</li>
+      <li>En <code>Código.gs</code>, dentro de <code>CONFIG</code>: en <code>sitio</code> escribe la dirección de tu página en Netlify (por ejemplo <code>https://edupan.netlify.app</code>, sin «/» al final). Revisa los correos de <code>respaldoPara</code> e <code>informePara</code>; en <code>informePara</code> puedes agregar el del jefe.</li>
+      <li>Guarda (💾 o Ctrl+S). Arriba, en la lista de funciones, elige <b>instalar</b> y toca <b class="ui">Ejecutar</b>. Google pedirá permiso: <b class="ui">Revisar permisos</b> → elige tu cuenta → si sale «Google no verificó esta app», toca <b class="ui">Configuración avanzada</b> → <b class="ui">Ir a EduPan envíos</b> → <b class="ui">Permitir</b>. Es tu propio programa: los permisos son para leer tu base de Firebase, enviar correos desde tu Gmail y programar los envíos.</li>
+      <li>Para probar: elige la función <b>probarAhora</b> → <b class="ui">Ejecutar</b>. En un minuto llegan los dos correos (respaldo e informe del mes pasado). En el panel, <b class="ui">Ajustes → Base de datos y respaldo</b> muestra el último envío.</li>
+    </ol>
+    <div class="tip"><b>Si algo falla</b>, el programa te manda un correo «No se pudo enviar…» con el motivo. Los más comunes: <code>CONFIG.sitio</code> mal escrito, o la cuenta no es la dueña del proyecto de Firebase (error 403). Para cambiar el día o la hora, edita <code>respaldoDia</code>, <code>respaldoHora</code> o <code>informeHora</code> y vuelve a ejecutar <b>instalar</b>. Para apagarlo, ejecuta <b>desinstalar</b>.</div>
+    <div class="tip">Cuando actualices la página no tienes que tocar el programa: usa los cálculos de tu sitio, así que el informe del correo siempre coincide con el del panel. Gmail permite 100 correos al día; aquí se envían 5 o 6 al mes.</div>
   </section>
 
   <section>

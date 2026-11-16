@@ -835,3 +835,17 @@ td[data-f].empty-cell:hover .add { opacity: 1; }
 .pagos-pop .dialog h2 { display: flex; align-items: center; gap: 8px; } .pagos-pop .dialog h2 svg { width: 20px; height: 20px; color: var(--gold); }
 @media (max-width: 780px) { .pago-item { grid-template-columns: minmax(0, 1fr) auto; } .pago-item .btn { grid-column: 1 / -1; } }
 .pagos-pop .card-head { flex-wrap: nowrap; align-items: flex-start; }
+
+/* ---------- Adelantos y descuentos en los roles ---------- */
+td.num { white-space: nowrap; }
+tr.sub-row td { padding-top: 0; border-top: 0; }
+.mov-chip { display: inline-flex; align-items: center; gap: 6px; margin: 0 6px 6px 0; padding: 3px 10px; border-radius: 99px; font-size: .76rem; font-weight: 700; background: var(--glow); color: var(--gold); }
+.mov-chip.bad { background: var(--bad-soft); color: var(--bad); }
+
+/* Pie de página con firma del diseñador */
+.site-foot { max-width: 1180px; margin: 32px auto 0; padding: 18px 16px 8px; border-top: 1px solid var(--line);
+  text-align: center; font-size: .76rem; color: var(--muted); }
+.site-foot b { color: var(--ink-2); font-weight: 700; }
+.login { padding-bottom: 56px; }
+.login-sign { position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: .76rem; color: var(--muted); }
+.login-sign b { color: var(--ink-2); font-weight: 700; }
