@@ -1,4 +1,4 @@
-# EduPan · Panel de control (PPX) — versión 3.4 (en línea: reportes diarios, pagos programados, inventario y personal)
+# EduPan · Panel de control (PPX) — versión 3.5 (en línea: reportes diarios, pagos programados, inventario y personal)
 
 Panel web para que la administradora de EduPan registre las ventas, la producción,
 las compras a proveedores y las pérdidas de **Matriz, Sucursal 1 y Sucursal 2** (dos
@@ -24,6 +24,9 @@ edupan-ppx/
 ├── LEEME.md                Este archivo
 ├── firestore.rules         Reglas de seguridad de la base de datos (se pegan en Firebase)
 ├── _headers                Cabeceras de seguridad para Netlify
+├── manifest.webmanifest    Datos de la app instalable (nombre, ícono, colores)
+├── sw.js                   Permite instalar EduPan como app (guarda la última versión de la página, no los datos)
+├── envios-automaticos/     Respaldo semanal e informe mensual por correo (Google Apps Script)
 └── assets/
     ├── css/
     │   └── styles.css      Diseño: colores, tipografía, animaciones, celular
@@ -31,6 +34,7 @@ edupan-ppx/
     │   ├── config.js       Empresa, administradora y configuración de Firebase
     │   ├── core.js         Formatos y reglas de negocio (cálculos, validaciones)
     │   ├── excel.js        Genera los informes en Excel (.xlsx) y lee el Excel de productos
+    │   ├── informe.js      Hojas de finanzas del Excel (las usa el panel y el correo mensual)
     │   ├── catalogo-edupan.js  Los 282 productos del Excel de EduPan (28/10/2026) para la carga inicial
     │   ├── datos.js        Login (Firebase Auth) y base de datos (Firestore)
     │   └── app.js          Pantallas: login, panel, ventas, inventario (con pérdidas), productos, informes, ajustes
@@ -38,10 +42,34 @@ edupan-ppx/
         ├── logo-light.webp Logo para fondo claro
         ├── logo-dark.webp  Logo para fondo oscuro
         ├── mark-light.webp Ícono pequeño (fondo claro)
-        └── mark-dark.webp  Ícono pequeño (fondo oscuro)
+        ├── mark-dark.webp  Ícono pequeño (fondo oscuro)
+        └── icon-*.png      Íconos de la app instalable (180, 192, 512 y 512 «maskable»)
 ```
 
-Los archivos JavaScript se cargan en este orden: `config.js` → `core.js` → `excel.js` → `catalogo-edupan.js` → `datos.js` → `app.js`.
+Los archivos JavaScript se cargan en este orden: `config.js` → `core.js` → `excel.js` → `informe.js` → `catalogo-edupan.js` → `datos.js` → `app.js`.
+
+## Novedades de la versión 3.5
+
+- **Panel:** «Así va el mes» (lo que lleva cada local, proyección del mes y comparación con el mes
+  pasado a la misma fecha, y si falta registrar ayer u hoy), «Para revisar» arriba, botón
+  «Registrar día», gráfico «Qué día se vende más» y, en «Ingresos por día», una línea punteada con
+  el período anterior. Los indicadores se pueden tocar: Ingresos abre los reportes diarios, Egresos y
+  Utilidad bajan a su detalle, y tocar un local filtra el panel.
+- **Reportes diarios:** vista **Calendario** (cada día más dorado cuanto más se vendió, con un punto por
+  local y aviso si falta alguno). Al tocar un día se ven los 3 locales. Cuando los 3 locales completan
+  un día aparece un destello dorado.
+- **Pendientes:** al entrar aparece una ventana con todo lo que falta hacer (reportes diarios que faltan,
+  pagos por vencer o vencidos, roles sin aprobar o sin pagar, respaldo pendiente), con botones para
+  resolverlo ahí mismo. La campanita (en el menú lateral y arriba en el celular) muestra cuántos hay y
+  abre la misma ventana.
+- **Buscar (Ctrl + K en la computadora):** trabajadores, productos, pagos, categorías, locales, secciones y acciones.
+- **Deshacer:** al eliminar un reporte, un adelanto, una categoría, un rol en borrador o una venta,
+  el aviso de abajo trae «Deshacer» durante unos segundos.
+- **Celular:** los formularios suben desde abajo (se cierran deslizando hacia abajo) y, mientras
+  cargan los datos, se ve la forma del panel en vez de un círculo.
+- **App instalable:** en Ajustes → «App en el celular» están los pasos (o el botón «Instalar»).
+- **Informes → «Imprimir o guardar en PDF»:** una hoja con logo, resumen, tabla por local,
+  gráfico y egresos por categoría.
 
 ## Cómo se usa (lo principal)
 

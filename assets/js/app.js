@@ -91,11 +91,24 @@
     db.auditoria.unshift({ id: uid(), fecha: util.now(), usuario: session ? session.nombre : "—", accion, detalle });
     db.auditoria = db.auditoria.slice(0, 300);
   }
-  function toast(msg) {
+  /** Aviso flotante. Con { undo } muestra «Deshacer» unos segundos. */
+  function toast(msg, opts) {
+    document.querySelectorAll(".toast").forEach((x) => x.remove());
     const t = document.createElement("div");
-    t.className = "toast"; t.setAttribute("role", "status"); t.textContent = msg;
-    document.body.appendChild(t); setTimeout(() => t.remove(), 2400);
+    t.className = "toast" + (opts && opts.undo ? " undo" : ""); t.setAttribute("role", "status");
+    const sp = document.createElement("span"); sp.textContent = msg; t.appendChild(sp);
+    const ms = opts && opts.undo ? 7000 : 2400;
+    if (opts && opts.undo) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "toast-btn"; b.textContent = "Deshacer";
+      b.addEventListener("click", () => { t.remove(); opts.undo(); });
+      const bar = document.createElement("i"); bar.className = "toast-bar"; bar.style.animationDuration = ms + "ms";
+      t.append(b, bar);
+    }
+    document.body.appendChild(t); setTimeout(() => t.remove(), ms);
   }
+  /** Copia de algunas listas antes de borrar, para poder deshacer. */
+  const snapDb = (keys) => Object.fromEntries(keys.map((k) => [k, JSON.parse(JSON.stringify(db[k]))]));
+  const undoWith = (snap, what) => () => { Object.assign(db, JSON.parse(JSON.stringify(snap))); audit("Eliminación deshecha", what); save(); render(); toast("Recuperado"); };
   const initials = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
   const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches"; };
   const statePill = (r) => r.estado === "CONFIRMADO" ? '<span class="pill good">Confirmado</span>' : '<span class="pill warn">Borrador</span>';
@@ -157,13 +170,14 @@
     const navProp = [["prod-panel", "Resumen por producto"], ["reportes", "Ventas"]];
     const tabs = [["panel", "Panel"], ["diario", "Diario"], ["pagos", "Pagos"], ["inventario", "Inventario"], ["mas", "Más"]];
     // Pérdidas vive dentro de Inventario: el menú marca Inventario
-    const npend = isAdmin() ? PPX.pagos.pendientes(db).length : 0;
+    const npend = isAdmin() ? PPX.pagos.pendientes(db).length : 0, ntodo = pendientes("todos").length;
     const link = (k, t) => `<a href="#${k}" ${r === k || (k === "inventario" && r === "perdidas") || (k === "mas" && (PROPUESTA.includes(r) || ["ajustes", "informes", "personal", "productos"].includes(r))) ? 'aria-current="page"' : ""}>${ICON[k]}<span>${t}</span>${k === "pagos" && npend ? `<em class="badge">${npend}</em>` : ""}</a>`;
     const role = isAdmin() ? "Administradora" : "Solo lectura";
     root.innerHTML = `
     <div class="app">
       <aside class="side">
         <div class="side-logo">${logo()}</div>
+        <button type="button" class="bell-btn ${ntodo ? "on" : ""}" data-f="pago-pop" aria-label="${ntodo ? `${ntodo} pendientes por hacer` : "Sin pendientes"}"><span class="bell-ic">${ICON.pagos}</span><span>${ntodo ? "Pendientes" : "Sin pendientes"}</span>${ntodo ? `<em class="badge">${ntodo}</em>` : ""}</button>
         <nav class="nav" aria-label="Secciones"><div class="nav-label">Gestión</div>${nav.map(([k, t]) => link(k, t)).join("")}<div class="nav-label prop">Propuesta · por producto</div>${navProp.map(([k, t]) => link(k, t)).join("")}</nav>
         <div class="side-foot">
           <div class="user"><div class="avatar">${esc(initials(session.nombre))}</div><div style="min-width:0"><b>${esc(session.nombre)}</b><span>${role}</span></div></div>
@@ -173,7 +187,7 @@
       </aside>
       <header class="topbar">
         ${mark()}
-        <div class="right">${npend ? `<button class="icon-btn bell" data-f="pago-pop" aria-label="${npend} pagos por hacer">${ICON.pagos}<em class="badge">${npend}</em></button>` : ""}${themeToggle(true)}<span class="pill ${isAdmin() ? "gold" : "neutral"}">${role}</span><button class="icon-btn" data-act="logout" aria-label="Cerrar sesión">${ICON.out}</button></div>
+        <div class="right"><button class="icon-btn bell" data-f="pago-pop" aria-label="${ntodo ? `${ntodo} pendientes por hacer` : "Sin pendientes"}">${ICON.pagos}${ntodo ? `<em class="badge">${ntodo}</em>` : ""}</button>${themeToggle(true)}<span class="pill ${isAdmin() ? "gold" : "neutral"}">${role}</span><button class="icon-btn" data-act="logout" aria-label="Cerrar sesión">${ICON.out}</button></div>
       </header>
       <main class="main"><div class="wrap" id="view"></div><footer class="site-foot">EduPan Panaderías · © ${new Date().getFullYear()} · Diseñado y desarrollado por <b>Maho Studio Dev</b></footer></main>
       <nav class="tabbar" aria-label="Secciones">${tabs.map(([k, t]) => link(k, t)).join("")}</nav>
@@ -201,7 +215,7 @@
     if (entering) $(".prod-grid", v)?.classList.add("enter-cards");
     else $(".prod-grid", v)?.classList.remove("enter-cards");
     countUp(v);
-    if (!ui.popupDone) { ui.popupDone = true; setTimeout(() => showPagosPopup(false), 450); }
+    if (!ui.popupDone) { ui.popupDone = true; setTimeout(() => showPendientes(false), 450); }
   }
 
   /* Cifras que suben desde 0 al mostrarse */
@@ -329,11 +343,27 @@
     });
   }
 
+  /** Mientras llegan los datos: la forma del panel con siluetas que brillan, en vez de un círculo que gira. */
+  function skeleton() {
+    const sk = (w, h, r) => `<i class="sk" style="width:${w};height:${h}px${r ? ";border-radius:" + r : ""}"></i>`;
+    return `<div class="app" aria-busy="true" aria-label="Cargando tus datos">
+      <aside class="side"><div class="side-logo">${logo()}</div><div class="nav">${[70, 82, 64, 76, 60, 68, 58, 54].map((w) => `<div class="sk-nav">${sk("18px", 18, "6px")}${sk(w + "%", 12)}</div>`).join("")}</div></aside>
+      <header class="topbar">${mark()}</header>
+      <main class="main"><div class="wrap">
+        <div class="page-head"><div class="lead" style="gap:10px">${sk("120px", 10)}${sk("260px", 26, "8px")}${sk("220px", 12)}</div></div>
+        <section class="kpis">${[0, 1, 2, 3].map((i) => `<div class="kpi ${i ? "" : "hero"}">${sk("40%", 10)}${sk("70%", 28, "8px")}${sk("55%", 10)}${sk("100%", 34, "8px")}</div>`).join("")}</section>
+        <div class="two"><section class="card" style="display:grid;gap:14px">${sk("35%", 14)}${[0, 1, 2].map(() => `${sk("100%", 10, "99px")}${sk("60%", 10)}`).join("")}</section><section class="card" style="display:grid;gap:12px">${sk("40%", 14)}${[0, 1, 2].map(() => sk("100%", 46, "12px")).join("")}</section></div>
+        <section class="card">${sk("30%", 14)}<div class="sk-bars">${Array.from({ length: 18 }, (_, i) => `<i class="sk" style="height:${30 + ((i * 37) % 60)}%"></i>`).join("")}</div></section>
+        <p class="muted small" style="text-align:center">Cargando tus datos…</p>
+      </div></main></div>`;
+  }
+
   /** Pantallas intermedias: conectando, confirmar correo, sin acceso, error. */
   function renderGate() {
     const g = ui.gate;
     const out = `<button class="btn ghost" type="button" data-gate="salir">Salir</button>`;
     let inner;
+    if (g.tipo === "cargando" && g.datos) { root.innerHTML = skeleton(); return; }
     if (g.tipo === "cargando") inner = `<div class="login-logo">${logo()}</div><div class="loading"><span class="spinner" aria-hidden="true"></span><span>${esc(g.texto || "Conectando con la base de datos…")}</span></div>`;
     else if (g.tipo === "config") inner = `<div class="login-logo">${logo()}</div><h1>Falta conectar Firebase</h1>
       <p class="login-sub">${window.firebase ? "Pega la configuración de tu proyecto de Firebase en <b>assets/js/config.js</b> (paso 5 de la guía) y vuelve a subir la carpeta a Netlify." : "No se pudo cargar Firebase. Revisa tu conexión a internet y recarga la página."}</p>
@@ -367,7 +397,7 @@
   async function startSession(user) {
     ui.loginMode = "entrar";
     if (!user.emailVerified) { ui.gate = { tipo: "verificar", email: user.email }; return render(); }
-    ui.gate = { tipo: "cargando", texto: "Cargando tus datos…" }; render();
+    ui.gate = { tipo: "cargando", texto: "Cargando tus datos…", datos: true }; render();
     try {
       const r = await data.cloud.open(user);
       db = r.db; session = r.session; ui.gate = null; ui.loginMsg = null;
@@ -1603,6 +1633,8 @@
         ${data.DEMO
           ? `<button class="btn primary" type="button" disabled>Descargar Excel</button><p class="note info">En este enlace de vista previa no se pueden descargar archivos. En el sistema instalado (el zip) este botón descarga el Excel.</p>`
           : `<button class="btn primary" type="button" data-act="inf-download" ${!locs.length || !nHojas ? "disabled" : ""}>Descargar Excel · ${nHojas} hoja${nHojas === 1 ? "" : "s"}</button>`}
+        <button class="btn" type="button" data-act="inf-print" ${!locs.length ? "disabled" : ""}>${ICON.informes} Imprimir o guardar en PDF</button>
+        <p class="muted small" style="margin-top:-8px">Una hoja con el logo, el resumen, los gráficos y el detalle por local, lista para el jefe. En la ventana de impresión elige «Guardar como PDF».</p>
       </section>
       <section class="card" style="display:grid;gap:14px;align-content:start;align-self:start">
         <div class="card-head" style="margin:0"><div><h2>Vista previa del estado de resultados</h2><p class="muted small">${fmt.period(...shown)} · así queda la primera hoja</p></div></div>
@@ -1615,6 +1647,39 @@
         ${recientes.length ? `<div><h3 style="margin-bottom:8px">Últimos informes</h3><div class="alerts">${recientes.map((a) => `<div class="alert"><span class="ic">${ICON.informes}</span><span><b>${fmt.stamp(a.fecha)}</b> · ${esc(a.detalle)}</span></div>`).join("")}</div></div>` : ""}
       </section>
     </div>`;
+  }
+  /** Informe de una hoja para imprimir o guardar en PDF (usa el período y los locales elegidos en Informes). */
+  function printReport() {
+    const range = infRange(), locs = infLocs(); if (!locs.length) return;
+    const shown = range[0] === "1900-01-01" ? [db.reportes.map((r) => r.desde).sort()[0] || today(), range[1]] : range;
+    const d = locs.map((l) => ({ l, i: locIdx(l.id), ...F.summary(db, range, l.id) })), sum = (k) => round2(d.reduce((a, x) => a + x[k], 0));
+    const T = { ingresos: sum("ingresos"), caja: sum("caja"), sueldos: sum("sueldos"), egresos: sum("egresos"), utilidad: sum("utilidad"), dias: sum("dias") };
+    const loc1 = locs.length === 1 ? locs[0].id : "todos";
+    const days = Math.round((new Date(shown[1]) - new Date(shown[0])) / 864e5) + 1, gran = days <= 35 ? "dia" : days <= 130 ? "semana" : "mes";
+    const eg = F.egresos(db, range, "todos").filter((e) => locs.some((l) => l.id === e.localId)), cats = F.byCategoria(eg).slice(0, 10);
+    const totEg = eg.reduce((a, e) => a + e.monto, 0);
+    const oldLocal = ui.local; ui.local = loc1;
+    const chart = stackChart(F.series(db, shown, loc1, gran), gran);
+    ui.local = oldLocal;
+    const pct = (a, b) => (b ? fmt.pct(a / b) : "—");
+    const el = document.createElement("div"); el.id = "print-area";
+    el.innerHTML = `<header class="pr-head"><img src="${IMG}logo-light.webp" alt="EduPan Panaderías"><div><h1>Informe de resultados</h1><p>${fmt.period(...shown)} · ${locs.map((l) => esc(l.nombre)).join(", ")}</p><p class="pr-muted">Generado el ${fmt.stamp(util.now())} por ${esc(session.nombre)}</p></div></header>
+      <section class="pr-kpis">${[["Ingresos", T.ingresos, ""], ["Egresos del día", T.caja, "bad"], ["Sueldos y aportes", T.sueldos, "bad"], ["Utilidad", T.utilidad, T.utilidad < 0 ? "bad" : "good"]].map(([t, v, c]) => `<div><span>${t}</span><b class="${c}">${fmt.money(v)}</b></div>`).join("")}<div><span>Margen</span><b>${pct(T.utilidad, T.ingresos)}</b></div></section>
+      <h2>Estado de resultados por local</h2>
+      <table class="pr-table"><thead><tr><th>Local</th><th>Ingresos</th><th>Egresos del día</th><th>Sueldos</th><th>Utilidad</th><th>Margen</th><th>Días</th></tr></thead>
+        <tbody>${d.map((x) => `<tr><td><i style="background:var(--s${x.i + 1})"></i>${esc(x.l.nombre)}</td><td>${fmt.money(x.ingresos)}</td><td>${fmt.money(x.caja)}</td><td>${fmt.money(x.sueldos)}</td><td class="${x.utilidad < 0 ? "bad" : "good"}">${fmt.money(x.utilidad)}</td><td>${pct(x.utilidad, x.ingresos)}</td><td>${x.dias}</td></tr>`).join("")}</tbody>
+        ${d.length > 1 ? `<tfoot><tr><td>Total</td><td>${fmt.money(T.ingresos)}</td><td>${fmt.money(T.caja)}</td><td>${fmt.money(T.sueldos)}</td><td class="${T.utilidad < 0 ? "bad" : "good"}">${fmt.money(T.utilidad)}</td><td>${pct(T.utilidad, T.ingresos)}</td><td>${T.dias}</td></tr></tfoot>` : ""}</table>
+      <div class="pr-cols"><section><h2>Ingresos ${gran === "dia" ? "por día" : gran === "semana" ? "por semana" : "por mes"}</h2><div class="chart">${chart}</div>
+          <p class="pr-legend">${db.locales.filter((l) => loc1 === "todos" || l.id === loc1).map((l) => `<span><i style="background:var(--s${locIdx(l.id) + 1})"></i>${esc(l.nombre)}</span>`).join("")}<span><i style="background:var(--bad)"></i>Egresos del día</span></p></section>
+        <section><h2>En qué se gasta</h2><table class="pr-table pr-cats"><tbody>${cats.map((c) => `<tr><td>${esc(catById(c.id).nombre)}</td><td>${fmt.money(c.v)}</td><td>${pct(c.v, totEg)}</td></tr>`).join("") || `<tr><td>Sin egresos en el período</td></tr>`}</tbody></table></section></div>
+      <p class="pr-note">Utilidad = ingresos − egresos de los reportes diarios − sueldos pagados (incluye aportes al IESS). Los sueldos cuentan el día en que se pagan.</p>
+      <footer class="pr-foot">EduPan Panaderías · Diseñado y desarrollado por Maho Studio Dev</footer>`;
+    document.getElementById("print-area")?.remove();
+    document.body.appendChild(el);
+    audit("Informe impreso", `${fmt.period(...shown)} · ${locs.map((l) => l.nombre).join(", ")}`); save();
+    const done = () => { el.remove(); window.removeEventListener("afterprint", done); };
+    window.addEventListener("afterprint", done);
+    setTimeout(() => { try { window.print(); } catch (x) { done(); toast("Este navegador no permite imprimir desde aquí."); } }, 80);
   }
   function downloadReport() {
     const range = infRange(), locs = infLocs();
@@ -1654,11 +1719,75 @@
   const segLocal = (key, cur, todos = "Los 3 locales") => `<div class="segmented" role="group" aria-label="Local">${[["todos", todos], ...db.locales.map((l) => [l.id, l.nombre])].map(([k, x]) => `<button class="seg" aria-pressed="${cur === k}" data-f="set" data-key="${key}" data-v="${k}">${esc(x)}</button>`).join("")}</div>`;
   const locIdx = (id) => db.locales.findIndex((l) => l.id === id);
   const errBox = (errs) => errs.map((x) => `<div class="note bad">${esc(x)}</div>`).join("");
+  /** Búsqueda rápida (Ctrl + K): secciones, acciones, trabajadores, productos, pagos y categorías. */
+  function openBuscar() {
+    if (!session || document.querySelector(".finder")) return;
+    const norm = (x) => PPX.cat.norm(String(x || ""));
+    const go = (h, fn) => () => { if (location.hash !== "#" + h) location.hash = "#" + h; if (fn) setTimeout(fn, 60); };
+    const items = [
+      ...[["panel", "Panel"], ["diario", "Reportes diarios"], ["pagos", "Pagos programados"], ["inventario", "Inventario"], ["productos", "Productos"], ["personal", "Personal y roles de pago"], ["informes", "Informes"], ["ajustes", "Ajustes"]].map(([k, t]) => ({ g: "Secciones", t, ic: k, run: go(k) })),
+      ...(isAdmin() ? [
+        { g: "Acciones", t: "Registrar el día", sub: "Ingresos y egresos de un local", ic: "plus", run: () => openCajaDialog(null, { localId: ui.local !== "todos" ? ui.local : db.locales[0].id, fecha: today() }) },
+        { g: "Acciones", t: "Nuevo pago programado", sub: "Arriendo, luz, proveedores…", ic: "plus", run: go("pagos", () => openPagoDialog(null)) },
+        { g: "Acciones", t: "Nuevo trabajador", ic: "plus", run: go("personal", () => openEmpDialog(null)) },
+        { g: "Acciones", t: "Registrar adelanto o descuento", ic: "plus", run: go("personal", () => openMovDialog(null)) },
+        { g: "Acciones", t: "Ver el calendario del mes", ic: "diario", run: () => { ui.diaVista = "cal"; ui.diaTab = "mes"; go("diario")(); render(); } },
+      ] : []),
+      ...db.locales.map((l) => ({ g: "Locales", t: l.nombre, sub: `Panel solo de ${l.nombre}`, ic: "panel", run: () => { ui.local = l.id; go("panel")(); render(); } })),
+      ...db.empleados.map((e) => ({ g: "Trabajadores", t: e.nombre, sub: `${e.cargo || "Trabajador"} · ${local(e.localId).nombre}${e.activo === false ? " · inactivo" : ""}`, ic: "personal", run: go("personal", () => openEmpDialog(e.id)) })),
+      ...db.pagos.filter((x) => x.activo !== false).map((x) => ({ g: "Pagos programados", t: x.concepto, sub: `${local(x.localId).nombre}${x.proximo ? " · " + fmt.date(x.proximo) : ""}${x.monto ? " · " + fmt.money(x.monto) : ""}`, ic: "pagos", run: go("pagos", () => openPagoDialog(x.id)) })),
+      ...(db.categorias || []).filter((c) => c.activo !== false).map((c) => ({ g: "Categorías", t: c.nombre, sub: c.tipo === "ingreso" ? "Categoría de ingresos" : "Categoría de egresos", ic: "tag", run: () => { ui.diaTab = "categorias"; go("diario")(); render(); } })),
+      ...db.productos.map((x) => ({ g: "Productos", t: x.nombre, sub: [x.codigo, x.marca, fmt.money(x.precio)].filter(Boolean).join(" · "), ic: "productos", key: [x.codigo, x.id, x.marca].join(" "), run: go("productos", () => openProdDialog(x.id)) })),
+    ];
+    let sel = 0, shown = [];
+    const { ov, close } = dialog(`<div class="dialog finder" role="dialog" aria-modal="true" aria-label="Buscar">
+      <label class="search finder-in">${ICON.search}<input class="input" id="fd-q" type="search" placeholder="Buscar trabajador, producto, pago, sección…" autocomplete="off" aria-controls="fd-list"></label>
+      <div class="finder-list" id="fd-list" role="listbox"></div>
+      <div class="finder-foot"><span><kbd>↑</kbd><kbd>↓</kbd> moverse</span><span><kbd>Enter</kbd> abrir</span><span><kbd>Esc</kbd> cerrar</span></div></div>`);
+    const inp = $("#fd-q", ov), list = $("#fd-list", ov);
+    const paint = () => {
+      const q = norm(inp.value).trim(), words = q.split(/\s+/).filter(Boolean);
+      shown = (q ? items.filter((it) => { const h = norm(it.t + " " + (it.sub || "") + " " + (it.key || "") + " " + it.g); return words.every((w) => h.includes(w)); })
+        .sort((a, b) => (norm(b.t).startsWith(q) ? 1 : 0) - (norm(a.t).startsWith(q) ? 1 : 0)) : items.filter((it) => ["Secciones", "Acciones"].includes(it.g))).slice(0, 40);
+      sel = Math.min(sel, Math.max(0, shown.length - 1));
+      let last = "";
+      list.innerHTML = shown.length ? shown.map((it, i) => { const h = it.g !== last ? `<div class="finder-g">${esc(it.g)}</div>` : ""; last = it.g;
+        return `${h}<button type="button" class="finder-item" role="option" data-i="${i}" aria-selected="${i === sel}"><span class="fi-ic">${ICON[it.ic] || ICON.search}</span><span class="fi-t"><b>${esc(it.t)}</b>${it.sub ? `<span class="muted small">${esc(it.sub)}</span>` : ""}</span><span class="fi-go">↵</span></button>`; }).join("")
+        : `<div class="empty">Nada coincide con «${esc(inp.value)}».</div>`;
+      list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+    };
+    const pick = (i) => { const it = shown[i]; if (!it) return; close(); it.run(); };
+    inp.addEventListener("input", () => { sel = 0; paint(); });
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(shown.length - 1, sel + 1); paint(); }
+      if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(0, sel - 1); paint(); }
+      if (e.key === "Enter") { e.preventDefault(); pick(sel); }
+    });
+    list.addEventListener("click", (e) => { const b = e.target.closest("[data-i]"); if (b) pick(Number(b.dataset.i)); });
+    list.addEventListener("mousemove", (e) => { const b = e.target.closest("[data-i]"); if (b && Number(b.dataset.i) !== sel) { sel = Number(b.dataset.i); list.querySelectorAll("[data-i]").forEach((x) => x.setAttribute("aria-selected", String(Number(x.dataset.i) === sel))); } });
+    paint(); inp.focus();
+  }
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") { e.preventDefault(); openBuscar(); }
+  });
+
+  /** En el celular los diálogos suben desde abajo; se cierran deslizando hacia abajo desde la parte de arriba. */
+  function sheetSwipe(ov, close) {
+    const d = ov.querySelector(".dialog"); if (!d || !matchMedia("(max-width: 780px)").matches) return;
+    let y0 = null, dy = 0;
+    d.addEventListener("touchstart", (e) => { const r = d.getBoundingClientRect(); y0 = d.scrollTop <= 0 && e.touches[0].clientY - r.top < 64 ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+    d.addEventListener("touchmove", (e) => { if (y0 === null) return; dy = Math.max(0, e.touches[0].clientY - y0); d.style.transition = "none"; d.style.transform = `translateY(${dy}px)`; }, { passive: true });
+    d.addEventListener("touchend", () => {
+      if (y0 === null) return; y0 = null; d.style.transition = "transform .25s cubic-bezier(.2, .7, .2, 1)";
+      if (dy > 90) { d.style.transform = "translateY(100%)"; setTimeout(close, 220); } else d.style.transform = "";
+    });
+  }
   function dialog(html, onMount) {
     const ov = document.createElement("div"); ov.className = "overlay";
     ov.innerHTML = html; document.body.appendChild(ov);
     const close = () => ov.remove();
     ov.addEventListener("click", (e) => { if (e.target === ov || e.target.closest("[data-close]")) close(); });
+    sheetSwipe(ov, close);
     onMount && onMount(ov, close);
     return { ov, close };
   }
@@ -1691,13 +1820,14 @@
     </div>
     ${ftabs("diaTab", tab, [["mes", "Días del mes", "diario"], ["categorias", "Categorías", "tag"]])}
     <div class="toolbar">${monthNav("diaMes", mes)}
-      <span class="muted small">Ingresos en grande; egresos del día debajo, en rojo.</span></div>
+      <div class="segmented small-seg" role="group" aria-label="Vista">${[["tabla", "Tabla"], ["cal", "Calendario"]].map(([k, x]) => `<button class="seg" data-f="dia-vista" data-v="${k}" aria-pressed="${(ui.diaVista || "tabla") === k}">${x}</button>`).join("")}</div></div>
     <section class="kpis" aria-label="Resumen del mes">
       <div class="kpi hero"><span class="eyebrow">Ingresos del mes</span><span class="val num" data-count="${round2(tot.ing)}" data-fmt="money">${fmt.money(tot.ing)}</span><span class="sub">${cajas.length} reporte${cajas.length === 1 ? "" : "s"} · ${mesTxt(mes)}</span></div>
       <div class="kpi"><span class="eyebrow">Egresos del mes</span><span class="val num" style="color:var(--bad)" data-count="${round2(tot.eg)}" data-fmt="money">${fmt.money(tot.eg)}</span><span class="sub">${sinDet ? `${fmt.money(sinDet)} sin detallar` : "Todo con categoría"}</span></div>
       <div class="kpi"><span class="eyebrow">Queda</span><span class="val num ${tot.ing - tot.eg >= 0 ? "good" : ""}" data-count="${round2(tot.ing - tot.eg)}" data-fmt="money">${fmt.money(tot.ing - tot.eg)}</span><span class="sub">Ingresos − egresos. La utilidad, ya con los sueldos, está en el Panel.</span></div>
       <div class="kpi"><span class="eyebrow">Reportes pendientes</span><span class="val num" style="color:${faltan ? "var(--warn)" : "var(--good)"}" data-count="${faltan}" data-fmt="int">${faltan}</span><span class="sub">${faltan ? "Días pasados sin reporte de algún local" : "Todos los días reportados"}</span></div>
     </section>
+    ${ui.diaVista === "cal" ? diaCalendario(mes, map) : `<p class="muted small" style="margin:-8px 0 0">Ingresos en grande; egresos del día debajo, en rojo.</p>
     <section class="card" aria-label="Reportes del mes">
       <div class="table-wrap"><table class="day-table">
         <thead><tr><th>Fecha</th>${db.locales.map((l, i) => `<th class="r"><i class="dot" style="background:var(--s${i + 1})"></i>${esc(l.nombre)}</th>`).join("")}<th class="r">Total del día</th></tr></thead>
@@ -1707,7 +1837,59 @@
         <tfoot><tr><td><b>Total</b></td>${db.locales.map((l) => `<td class="r num day-cell"><b>${fmt.money(porLoc[l.id].ing)}</b><span class="eg">− ${fmt.money(porLoc[l.id].eg)}</span><span class="queda">Queda ${fmt.money(porLoc[l.id].ing - porLoc[l.id].eg)}</span></td>`).join("")}<td class="r num day-cell"><b>${fmt.money(tot.ing)}</b><span class="eg">− ${fmt.money(tot.eg)}</span><span class="queda">Queda ${fmt.money(tot.ing - tot.eg)}</span></td></tr></tfoot>
       </table></div>
       ${!dias.length ? `<div class="empty">Este mes todavía no empieza.</div>` : ""}
+    </section>`}`;
+  }
+
+  /** Destello dorado: solo cuando se completa el día en los 3 locales. */
+  function celebrate() {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const box = document.createElement("div"); box.className = "burst"; box.setAttribute("aria-hidden", "true");
+    const cols = ["var(--gold-hi)", "var(--gold)", "var(--s1)", "var(--teal)", "#F3D697"];
+    for (let i = 0; i < 26; i++) {
+      const p = document.createElement("i"), a = (Math.PI * 2 * i) / 26 + Math.random() * 0.3, d = 90 + Math.random() * 130;
+      p.style.setProperty("--x", `${Math.cos(a) * d}px`); p.style.setProperty("--y", `${Math.sin(a) * d - 40}px`);
+      p.style.setProperty("--r", `${Math.round(Math.random() * 540 - 270)}deg`); p.style.background = cols[i % cols.length];
+      p.style.animationDelay = `${Math.random() * 0.08}s`; box.appendChild(p);
+    }
+    document.body.appendChild(box); setTimeout(() => box.remove(), 1300);
+  }
+
+  /** Calendario del mes: cada día se pinta más dorado cuanto más se vendió. */
+  function diaCalendario(mes, map) {
+    const [a, b] = mesRange(mes), t = today();
+    const first = (new Date(a + "T12:00:00").getDay() + 6) % 7, dias = [];
+    for (let d = a; d <= b; d = addDays(d, 1)) dias.push(d);
+    const totOf = (d) => db.locales.reduce((s, l) => { const r = map.get(d + "|" + l.id); return s + (r && !r.soloPagos ? Number(r.ingresos) || 0 : 0); }, 0);
+    const vals = dias.map(totOf).filter((v) => v > 0), max = Math.max(1, ...vals), min = vals.length ? Math.min(...vals) : 0;
+    const cells = dias.map((d, i) => {
+      const tot = totOf(d), fut = d > t, hoy = d === t;
+      const est = db.locales.map((l, j) => { const r = map.get(d + "|" + l.id); return { l, j, ok: !!(r && !r.soloPagos) }; });
+      const falta = !fut && d < t && est.some((x) => !x.ok), pct = max > min ? (tot - min) / (max - min) : 1;
+      const bg = tot ? `color-mix(in srgb, var(--gold) ${Math.round(12 + pct * 70)}%, var(--surface))` : "";
+      return `<button type="button" class="cal-day${fut ? " fut" : ""}${hoy ? " hoy" : ""}${falta ? " falta" : ""}${pct > 0.62 ? " hi" : ""}" ${fut ? "disabled" : `data-f="dia-ver" data-fecha="${d}"`} style="${bg ? `--bg:${bg};` : ""}animation-delay:${(i * 0.012).toFixed(3)}s" title="${fmt.date(d)}${tot ? " · " + fmt.money(tot) : ""}${falta ? " · falta algún reporte" : ""}">
+        <span class="cal-n">${Number(d.slice(8))}</span>${tot ? `<b class="num">${axisMoney(tot)}</b>` : `<b class="cal-empty">${fut ? "" : "—"}</b>`}
+        <span class="cal-dots">${est.map((x) => `<i class="${x.ok ? "ok" : ""}" style="--c:var(--s${x.j + 1})" title="${esc(x.l.nombre)}: ${x.ok ? "registrado" : "sin reporte"}"></i>`).join("")}</span></button>`;
+    }).join("");
+    return `<section class="card cal" aria-label="Calendario del mes">
+      <div class="cal-grid">${["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((x) => `<span class="cal-h">${x}</span>`).join("")}${first ? `<span class="cal-pad" style="grid-column:span ${first}"></span>` : ""}${cells}</div>
+      <div class="cal-legend"><span>Menos</span><i class="cal-scale"></i><span>Más ingresos</span><span class="cal-key"><i class="ok" style="--c:var(--s1)"></i>registrado</span><span class="cal-key"><i></i>falta</span></div>
     </section>`;
+  }
+  /** Al tocar un día del calendario: los 3 locales de ese día. */
+  function openDiaDialog(d) {
+    const rows = db.locales.map((l, i) => {
+      const r = db.reportes.find((x) => x.tipo === "CAJA" && x.localId === l.id && x.hasta === d);
+      const ok = r && !r.soloPagos;
+      return `<div class="dia-row"><span class="ritmo-name"><i style="background:var(--s${i + 1})"></i>${esc(l.nombre)}</span>
+        ${ok ? `<span class="num"><b>${fmt.money(r.ingresos)}</b> <span class="muted small">− ${fmt.money(F.cajaEgresos(r))}</span></span><button type="button" class="btn small-btn" data-dia-open="${r.id}">${isAdmin() ? "Ver o corregir" : "Ver"}</button>`
+          : `<span class="muted small">Sin reporte</span>${isAdmin() ? `<button type="button" class="btn small-btn primary" data-dia-new="${l.id}">+ Registrar</button>` : "<span></span>"}`}</div>`;
+    }).join("");
+    const { ov, close } = dialog(`<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dd-t">${dlgHead("dd-t", fmt.date(d))}<div class="dia-list">${rows}</div></div>`);
+    ov.addEventListener("click", (e) => {
+      const o = e.target.closest("[data-dia-open]"), n = e.target.closest("[data-dia-new]");
+      if (o) { close(); openCajaDialog(o.dataset.diaOpen); }
+      if (n) { close(); openCajaDialog(null, { localId: n.dataset.diaNew, fecha: d }); }
+    });
   }
 
   /** Registrar o editar el reporte de un día: ingresos y egresos, cada uno como un solo total o por categoría. */
@@ -1792,9 +1974,10 @@
       if (t.dataset.cdelask !== undefined) confirmDel = true;
       if (t.dataset.cdelno !== undefined) confirmDel = false;
       if (t.dataset.cdelok !== undefined) {
+        const snap = snapDb(["reportes"]);
         db.reportes = db.reportes.filter((x) => x.id !== r0.id);
         audit("Reporte diario eliminado", `${local(r0.localId).nombre} · ${fmt.date(r0.hasta)} · ingresos ${fmt.money(r0.ingresos)}, egresos ${fmt.money(F.cajaEgresos(r0))}`);
-        save(); close(); render(); return toast("Reporte eliminado");
+        save(); close(); render(); return toast("Reporte eliminado", { undo: undoWith(snap, `Reporte diario de ${local(r0.localId).nombre} del ${fmt.date(r0.hasta)}`) });
       }
       paint();
     });
@@ -1838,7 +2021,10 @@
       const eg = F.cajaEgresos(rep);
       audit(r0 ? "Reporte diario corregido" : "Reporte diario registrado", `${local(rep.localId).nombre} · ${fmt.date(rep.hasta)} · ingresos ${fmt.money(rep.ingresos)}, egresos ${fmt.money(eg)}${r0 && (r0.ingresos !== rep.ingresos || F.cajaEgresos(r0) !== eg) ? ` (antes ${fmt.money(r0.ingresos)} / ${fmt.money(F.cajaEgresos(r0))})` : ""}`);
       ui.diaMes = rep.hasta.slice(0, 7);
-      save(); close(); render(); toast(r0 ? "Reporte corregido" : "Reporte guardado");
+      const completo = db.locales.every((l) => db.reportes.some((x) => x.tipo === "CAJA" && !x.soloPagos && x.localId === l.id && x.hasta === rep.hasta));
+      save(); close(); render();
+      if (completo && (!r0 || r0.soloPagos)) { celebrate(); toast(`¡Día completo! Los 3 locales registraron el ${fmt.date(rep.hasta)}`); }
+      else toast(r0 ? "Reporte corregido" : "Reporte guardado");
     });
     paint();
     if (!ro) form.querySelector('[data-cl="ing:0:monto"]')?.focus();
@@ -2057,9 +2243,10 @@
       if (e.target.closest("[data-mvdel]")) $("#mv-conf", f).innerHTML = `<div class="confirm-box"><span>¿Eliminar este ${m0.tipo === "ADELANTO" ? "adelanto" : "descuento"}? También se quita del reporte diario si salió de caja.</span><div class="actions"><button type="button" class="btn ghost" data-mvno>Cancelar</button><button type="button" class="btn danger" data-mvok>Eliminar</button></div></div>`;
       if (e.target.closest("[data-mvno]")) $("#mv-conf", f).innerHTML = "";
       if (e.target.closest("[data-mvok]")) {
+        const snap = snapDb(["adelantos", "reportes"]);
         db.adelantos = db.adelantos.filter((x) => x.id !== m0.id); quitarDeCaja((l) => l.movId === m0.id);
         audit(m0.tipo === "ADELANTO" ? "Adelanto eliminado" : "Descuento eliminado", `${empleado(m0.empleadoId)?.nombre} · ${fmt.money(m0.monto)} · ${fmt.date(m0.fecha)}`);
-        save(); close(); render(); toast("Eliminado");
+        save(); close(); render(); toast("Eliminado", { undo: undoWith(snap, `${m0.tipo === "ADELANTO" ? "Adelanto" : "Descuento"} de ${empleado(m0.empleadoId)?.nombre}`) });
       }
     });
     f.addEventListener("submit", (e) => {
@@ -2283,10 +2470,12 @@
   const propuestaBanner = () => `<div class="note info propuesta"><b>Propuesta:</b> registro por producto (cada pan, torta o bebida por separado). Hoy el negocio se lleva con los <a href="#diario">reportes diarios</a> de ingresos y egresos; esta sección queda lista por si más adelante se quiere ese detalle. Las ventas restan del inventario, pero no suman en el Panel principal.</div>`;
 
   /* ---------- Gráficos de finanzas ---------- */
-  function stackChart(ser, gran) {
+  function stackChart(ser, gran, prevSer) {
     if (!ser.some((s) => s.ingresos || s.egresos)) return `<div class="empty">Sin reportes en este período.</div>`;
     const keys = ser.slice(-(gran === "dia" ? 31 : 16));
-    const max = Math.max(1, ...keys.map((s) => Math.max(s.ingresos, s.caja)));
+    const prevK = prevSer ? prevSer.slice(-keys.length) : null;
+    const pv = (i) => (prevK ? (prevK[i - (keys.length - prevK.length)] || {}).ingresos || 0 : 0);
+    const max = Math.max(1, ...keys.map((s, i) => Math.max(s.ingresos, s.caja, pv(i))));
     const W = 620, H = 260, L = 54, B = 30, T = 22, R = 6, step = niceStep(max * 1.05), top = Math.ceil((max * 1.08) / step) * step;
     const cw = (W - L - R) / keys.length, bw = Math.min(34, cw * 0.62), y = (v) => T + (H - T - B) * (1 - v / top);
     const lbl = (k) => (gran === "mes" ? F.MESES[Number(k.slice(5, 7)) - 1].slice(0, 3) : fmt.short(k));
@@ -2297,13 +2486,14 @@
       const x = L + i * cw + (cw - bw) / 2; let acc = 0; const segs = [];
       db.locales.forEach((l, j) => { const v = s.per[l.id] || 0; if (v) { segs.push({ l, j, v, from: acc }); acc += v; } });
       const clip = "c" + uid();
-      g += `<g class="col" ${tt({ t: (gran === "dia" ? "" : gran === "semana" ? "Semana del " : "") + (gran === "mes" ? mesTxt(s.key.slice(0, 7)) : fmt.short(s.key)), s: `Ingresos ${fmt.money(s.ingresos)} · queda ${fmt.money(s.ingresos - s.caja)}`, r: segs.map((x) => [`var(--s${x.j + 1})`, x.l.nombre, fmt.money(x.v)]).concat([["var(--bad)", "Egresos del día", fmt.money(s.caja)]]) })}><rect class="hit" x="${L + i * cw + 1}" y="${T}" width="${Math.max(1, cw - 2)}" height="${H - T - B}" rx="6"/>`;
+      g += `<g class="col" ${tt({ t: (gran === "dia" ? "" : gran === "semana" ? "Semana del " : "") + (gran === "mes" ? mesTxt(s.key.slice(0, 7)) : fmt.short(s.key)), s: `Ingresos ${fmt.money(s.ingresos)} · queda ${fmt.money(s.ingresos - s.caja)}`, r: segs.map((x) => [`var(--s${x.j + 1})`, x.l.nombre, fmt.money(x.v)]).concat([["var(--bad)", "Egresos del día", fmt.money(s.caja)]]).concat(prevK ? [["var(--muted)", "Período anterior", fmt.money(pv(i))]] : []) })}><rect class="hit" x="${L + i * cw + 1}" y="${T}" width="${Math.max(1, cw - 2)}" height="${H - T - B}" rx="6"/>`;
       g += `<clipPath id="${clip}"><rect x="${x}" y="${y(acc)}" width="${bw}" height="${Math.max(0, y(0) - y(acc))}" rx="${Math.min(6, bw / 3)}"/></clipPath><g class="grow" style="animation-delay:${(i * 0.03).toFixed(2)}s" clip-path="url(#${clip})">`;
       for (const sg of segs) g += `<rect x="${x}" y="${y(sg.from + sg.v)}" width="${bw}" height="${Math.max(0, y(sg.from) - y(sg.from + sg.v))}" fill="var(--s${sg.j + 1})"/>`;
       g += `</g></g>`;
       pts.push([x + bw / 2, y(s.caja)]);
       if (keys.length <= 8 || i % Math.ceil(keys.length / 7) === 0 || i === keys.length - 1) g += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" class="ax">${lbl(s.key)}</text>`;
     });
+    if (prevK) g += `<path class="area-in" d="${keys.map((s, i) => (i ? "L" : "M") + (L + i * cw + cw / 2).toFixed(1) + " " + y(pv(i)).toFixed(1)).join("")}" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="5 4" stroke-linejoin="round" opacity=".85" style="pointer-events:none"/>`;
     g += `<path class="draw" pathLength="1" d="${pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join("")}" fill="none" stroke="var(--bad)" stroke-width="2" stroke-dasharray="1 0" stroke-linejoin="round" style="pointer-events:none"/>`;
     g += pts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6" fill="var(--bad)" style="pointer-events:none"/>`).join("");
     return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ingresos por local y egresos">${g}</svg>`;
@@ -2370,6 +2560,99 @@
   }
 
   /* ---------- Panel principal (finanzas) ---------- */
+  /* ---------- Pendientes: «Para revisar», la campanita y el aviso al entrar ---------- */
+  function pendientes(locSel = "todos") {
+    const alert = (cls, icon, html) => `<div class="alert ${cls}"><span class="ic">${ICON[icon]}</span><span>${html}</span></div>`;
+    const enLoc = (id) => locSel === "todos" || id === locSel;
+    const t = today(), mes = curMes(), diaHoy = Number(t.slice(8)), mesAnt = addMes(mes, -1), out = [];
+    const add = (cls, icon, html) => out.push({ cls, html: alert(cls, icon, html) });
+    if (!data.DEMO && isAdmin() && db.reportes.length && (backupDays() === null || backupDays() > 7)) add("warn", "clock", `<b>Respaldo semanal pendiente:</b> ${ultimoRespaldoAny() ? `el último fue hace ${backupDays()} días` : "aún no has descargado ninguno"}. <a href="#ajustes">Ir a Ajustes</a>`);
+    if (db.reportes.some((r) => r.tipo === "CAJA" && !r.soloPagos)) db.locales.filter((l) => enLoc(l.id)).forEach((l) => {
+      const d = [1, 2, 3, 4, 5, 6, 7].map((k) => addDays(t, -k)).filter((d) => !db.reportes.some((r) => r.tipo === "CAJA" && !r.soloPagos && r.localId === l.id && r.hasta === d));
+      if (d.length) add("warn", "warn", `<b>Falta el reporte diario de ${esc(l.nombre)}:</b> ${d.slice().reverse().map((x) => fmt.short(x)).join(", ")}. ${isAdmin() ? `<a role="button" tabindex="0" class="lnk" data-f="caja-new" data-loc="${l.id}" data-fecha="${d[0]}">Registrar ${fmt.short(d[0])}</a> · ` : ""}<a href="#diario">Ir a reportes diarios</a>`);
+    });
+    PPX.pagos.pendientes(db).filter((p) => enLoc(p.localId)).forEach((p) => { const d = PPX.pagos.faltan(p); add(d < 0 ? "bad" : "warn", "pagos", `<b>${esc(p.concepto)}</b> (${esc(local(p.localId).nombre)}): ${PPX.pagos.estadoTxt(d).toLowerCase()}, ${fmt.date(p.proximo)}${p.monto ? ` · ${fmt.money(p.monto)}` : ""}. ${isAdmin() ? `<a role="button" tabindex="0" class="lnk" data-f="pago-pay" data-id="${p.id}">Registrar pago</a>` : ""}`); });
+    db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "BORRADOR" && enLoc(r.localId)).forEach((r) => add("warn", "clock", `<b>Rol de pagos sin aprobar:</b> ${esc(local(r.localId).nombre)}, ${esc(r.periodoTxt)}. No cuenta como gasto hasta aprobarlo. <a href="#personal" data-route="personal" data-open="${r.id}">Abrir</a>`));
+    db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "CONFIRMADO" && !r.pago && enLoc(r.localId)).forEach((r) => add("warn", "personal", `<b>Rol aprobado sin pagar:</b> ${esc(local(r.localId).nombre)}, ${esc(r.periodoTxt)} (neto ${fmt.money(F.rolTotals(r).neto)}). Se descuenta del reporte diario cuando registres el pago. ${isAdmin() ? `<a role="button" tabindex="0" class="lnk" data-f="rol-pagar" data-id="${r.id}">Registrar pago</a>` : ""}`));
+    const sinRol = db.locales.filter((l) => enLoc(l.id) && db.empleados.some((e) => e.activo !== false && e.localId === l.id && e.frecuencia === "MENSUAL" && e.ingreso <= F.lastDay(mesAnt)) && !db.reportes.some((r) => r.tipo === "ROL" && r.localId === l.id && r.mes === mesAnt && r.tramo === "M"));
+    if (sinRol.length && diaHoy >= 3) add("", "personal", `<b>Rol de ${mesTxt(mesAnt).toLowerCase()} pendiente:</b> ${sinRol.map((l) => esc(l.nombre)).join(", ")}. Sin rol, la utilidad no descuenta los sueldos. <a href="#personal" data-f="go-roles">Ir a roles</a>`);
+    return out;
+  }
+  /** Ventana flotante con todo lo pendiente: al entrar (si hay algo) y al tocar la campanita. */
+  function showPendientes(force) {
+    if (!session) return;
+    document.querySelector(".overlay.pend-pop")?.remove();
+    const list = pendientes("todos");
+    if (!list.length) { if (force) toast("No hay nada pendiente"); return; }
+    const urg = list.filter((x) => x.cls === "bad").length;
+    const { ov, close } = dialog(`<div class="dialog wide" role="alertdialog" aria-modal="true" aria-labelledby="pend-t">
+      <div class="card-head" style="margin:0"><div><h2 id="pend-t">${ICON.pagos} Pendientes por hacer</h2><p class="muted small">${list.length} pendiente${list.length === 1 ? "" : "s"}${urg ? ` · <b style="color:var(--bad)">${urg} vencido${urg === 1 ? "" : "s"}</b>` : ""}. Este aviso aparece cada vez que entras mientras haya algo por hacer; también está en la campanita.</p></div><button type="button" class="icon-btn" data-close aria-label="Cerrar">${ICON.x}</button></div>
+      <div class="alerts pend-list">${list.map((x) => x.html).join("")}</div>
+      <div class="actions"><a class="btn ghost" href="#panel" data-close>Ver el panel</a><button type="button" class="btn primary" data-close>Entendido</button></div>
+    </div>`);
+    ov.classList.add("pend-pop");
+    // Al tocar una acción o un enlace, se cierra la ventana y se hace lo pedido
+    ov.addEventListener("click", (e) => { if (e.target.closest(".pend-list a, .pend-list [data-f]")) close(); });
+  }
+
+  /* ---------- Así va el mes ---------- */
+  const DIAS_SEM = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+  function ritmoMes() {
+    const t = today(), mes = curMes(), dia = Number(t.slice(8)), diasMes = Number(F.lastDay(mes).slice(8));
+    const ant = addMes(mes, -1), finAnt = F.lastDay(ant), corteAnt = `${ant}-${String(Math.min(dia, Number(finAnt.slice(8)))).padStart(2, "0")}`;
+    const mesNom = F.MESES[Number(mes.slice(5, 7)) - 1], antNom = F.MESES[Number(ant.slice(5, 7)) - 1];
+    const hecho = (id, d) => db.reportes.some((r) => r.tipo === "CAJA" && !r.soloPagos && r.localId === id && r.hasta === d);
+    const locs = db.locales.map((l, i) => ({ l, i })).filter((x) => ui.local === "todos" || x.l.id === ui.local);
+    const ayer = addDays(t, -1);
+    const rows = locs.map(({ l, i }) => {
+      const s = F.summary(db, [mes + "-01", t], l.id);
+      const sa = F.summary(db, [ant + "-01", corteAnt], l.id).ingresos, totAnt = F.summary(db, [ant + "-01", finAnt], l.id).ingresos;
+      const proy = s.dias ? (s.ingresos / s.dias) * diasMes : 0;
+      const tope = Math.max(totAnt, proy, s.ingresos) || 1;
+      const vs = sa ? (s.ingresos - sa) / sa : null, okAyer = hecho(l.id, ayer), okHoy = hecho(l.id, t);
+      return `<div class="ritmo-row">
+        <span class="ritmo-name"><i style="background:var(--s${i + 1})"></i>${esc(l.nombre)}</span><span class="ritmo-val num">${fmt.money(s.ingresos)}</span>
+        <div class="ritmo-track" role="img" aria-label="${esc(l.nombre)}: ${fmt.money(s.ingresos)} en el mes; en ${antNom} a esta fecha ${fmt.money(sa)}"><i style="width:${((Math.min(1, s.ingresos / tope)) * 100).toFixed(1)}%;background:var(--s${i + 1})"></i>${sa ? `<b style="left:calc(${(Math.min(1, sa / tope) * 100).toFixed(1)}% - 1px)" title="Lo que llevaba en ${antNom} a esta fecha: ${fmt.money(sa)}"></b>` : ""}</div>
+        <div class="ritmo-meta"><span>Proyección del mes <b class="num">${s.dias ? fmt.money(proy) : "—"}</b></span>
+          <span>${vs !== null ? `<span class="delta ${vs >= 0 ? "up" : "down"}">${vs >= 0 ? "▲" : "▼"} ${fmt.pct(Math.abs(vs))}</span> frente a ${antNom} a esta fecha` : `Sin datos de ${antNom}`}</span></div>
+        <div class="today-strip"><span class="today-chip ${okAyer ? "ok" : "falta"}">${okAyer ? "Ayer registrado" : "Falta ayer"}</span><span class="today-chip ${okHoy ? "ok" : ""}">${okHoy ? "Hoy registrado" : "Hoy sin registrar"}</span></div>
+      </div>`;
+    }).join("");
+    return `<div class="card-head"><div><h2>Así va ${mesNom}</h2><p class="muted small">Ingresos del mes en curso · día ${dia} de ${diasMes}. La raya marca lo que se llevaba en ${antNom} a esta fecha.</p></div></div>
+      <div class="ritmo">${rows}</div>`;
+  }
+
+  /* ---------- Qué día se vende más ---------- */
+  function wkCard(range) {
+    return `<section class="card chart"><div class="card-head"><div><h2>Qué día se vende más</h2><p class="muted small">Ingreso promedio de cada día de la semana en el período</p></div></div>${weekdayChart(range)}</section>`;
+  }
+  function weekdayChart(range) {
+    const D = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+    const locs = db.locales.map((l, i) => ({ l, i })).filter((x) => ui.local === "todos" || x.l.id === ui.local);
+    const acc = locs.map(() => D.map(() => ({ s: 0, n: 0 })));
+    db.reportes.forEach((r) => {
+      if (r.tipo !== "CAJA" || r.soloPagos || r.hasta < range[0] || r.hasta > range[1]) return;
+      const k = locs.findIndex((x) => x.l.id === r.localId); if (k < 0) return;
+      const d = (new Date(r.hasta + "T12:00:00").getDay() + 6) % 7; acc[k][d].s += Number(r.ingresos) || 0; acc[k][d].n++;
+    });
+    const avg = acc.map((a) => a.map((x) => (x.n ? x.s / x.n : 0)));
+    const tot = D.map((_, d) => avg.reduce((a, row) => a + row[d], 0));
+    if (!tot.some((v) => v > 0)) return `<div class="empty">Aún no hay reportes diarios en este período.</div>`;
+    const W = 420, H = 230, T = 26, B = 28, bw = W / 7, ch = H - T - B, max = Math.max(...tot);
+    const best = tot.indexOf(max), worst = tot.indexOf(Math.min(...tot.filter((v) => v > 0)));
+    const cols = D.map((dn, d) => {
+      let y = H - B; const x = d * bw + bw * 0.2, w = bw * 0.6;
+      const segs = locs.map((L, k) => { const h = (avg[k][d] / max) * ch; y -= h; return h > 0 ? `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="var(--s${L.i + 1})"/>` : ""; }).join("");
+      const clip = "w" + uid();
+      return `<g class="col" ${tt({ t: DIAS_SEM[d].charAt(0).toUpperCase() + DIAS_SEM[d].slice(1), s: `Promedio ${fmt.money(tot[d])} por día`, r: locs.map((L, k) => [`var(--s${L.i + 1})`, L.l.nombre, fmt.money(avg[k][d])]) })}><rect class="hit" x="${(d * bw + 1).toFixed(1)}" y="${T - 6}" width="${(bw - 2).toFixed(1)}" height="${H - T - B + 6}" rx="6"/>
+        <clipPath id="${clip}"><rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${(H - B - y).toFixed(1)}" rx="${Math.min(6, w / 3).toFixed(1)}"/></clipPath><g class="grow" style="animation-delay:${(d * 0.05).toFixed(2)}s" clip-path="url(#${clip})">${segs}</g>
+        ${tot[d] ? `<text class="val-lbl" x="${(x + w / 2).toFixed(1)}" y="${(y - 8).toFixed(1)}" text-anchor="middle">${axisMoney(tot[d])}</text>` : ""}
+        <text class="ax${d === best ? " strong" : ""}" x="${(x + w / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${dn}</text></g>`;
+    }).join("");
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ingreso promedio por día de la semana">${cols}</svg>
+      <p class="muted small" style="margin-top:8px">Mejor día: <b style="color:var(--ink)">${DIAS_SEM[best]}</b> (${fmt.money(max)}) · más flojo: ${DIAS_SEM[worst]} (${fmt.money(tot[worst])})</p>`;
+  }
+
   function viewPanel() {
     const range = rules.periodRange(ui.periodo), prev = rules.prevRange(range);
     const firstDay = db.reportes.filter((r) => ["CAJA", "GASTO", "ROL"].includes(r.tipo)).map((r) => r.desde).sort()[0] || today();
@@ -2379,6 +2662,7 @@
     const gran = days <= 35 ? "dia" : days <= 130 ? "semana" : "mes";
     const ser = F.series(db, shown, ui.local, gran);
     const trendGran = days <= 130 ? "semana" : "mes", trend = F.series(db, shown, ui.local, trendGran).slice(-14);
+    const serPrev = ui.periodo === "todo" ? null : (() => { const sp2 = F.series(db, prev, ui.local, gran); return sp2.some((x) => x.ingresos) ? sp2 : null; })();
     const porLocal = db.locales.map((l, i) => ({ l, i, ...F.summary(db, range, l.id) }));
     const totIng = porLocal.reduce((a, x) => a + x.ingresos, 0);
     const eg = F.egresos(db, range, ui.local), cats = F.byCategoria(eg);
@@ -2389,23 +2673,21 @@
     const nuevo = !db.reportes.some((r) => r.tipo === "CAJA");
     const best = [...porLocal].filter((x) => x.ingresos > 0).sort((a, b) => b.utilidad - a.utilidad)[0] || porLocal[0];
     const alert = (cls, icon, html) => `<div class="alert ${cls}"><span class="ic">${ICON[icon]}</span><span>${html}</span></div>`;
-    // Para revisar
-    const t = today(), mes = curMes(), diaHoy = Number(t.slice(8));
-    const faltan = db.locales.map((l) => ({ l, d: [1, 2, 3, 4, 5, 6, 7].map((k) => addDays(t, -k)).filter((d) => !db.reportes.some((r) => r.tipo === "CAJA" && !r.soloPagos && r.localId === l.id && r.hasta === d)) })).filter((x) => x.d.length && (ui.local === "todos" || x.l.id === ui.local));
-    const rolBorr = db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "BORRADOR");
-    const mesAnt = addMes(mes, -1);
-    const sinRol = db.locales.filter((l) => db.empleados.some((e) => e.activo !== false && e.localId === l.id && e.frecuencia === "MENSUAL" && e.ingreso <= F.lastDay(mesAnt)) && !db.reportes.some((r) => r.tipo === "ROL" && r.localId === l.id && r.mes === mesAnt && r.tramo === "M") && (ui.local === "todos" || l.id === ui.local));
+    // Para revisar: lo mismo que la campanita y el aviso al entrar, más el aviso de egresos sin detallar
     const sinDetPct = s.caja ? s.sinDetallar / s.caja : 0;
     const alerts = [
-      !data.DEMO && isAdmin() && db.reportes.length && (backupDays() === null || backupDays() > 7) ? alert("warn", "clock", `<b>Respaldo semanal pendiente:</b> ${ultimoRespaldoAny() ? `el último fue hace ${backupDays()} días` : "aún no has descargado ninguno"}. <a href="#ajustes">Ir a Ajustes</a>`) : "",
-      ...faltan.map((x) => alert("warn", "warn", `<b>Falta el reporte diario de ${esc(x.l.nombre)}:</b> ${x.d.slice().reverse().map((d) => fmt.short(d)).join(", ")}. <a href="#diario">Ir a reportes diarios</a>`)),
-      ...rolBorr.map((r) => alert("warn", "clock", `<b>Rol de pagos sin aprobar:</b> ${esc(local(r.localId).nombre)}, ${esc(r.periodoTxt)}. No cuenta como gasto hasta aprobarlo. <a href="#personal" data-route="personal" data-open="${r.id}">Abrir</a>`)),
-      sinRol.length && diaHoy >= 3 ? alert("", "personal", `<b>Rol de ${mesTxt(mesAnt).toLowerCase()} pendiente:</b> ${sinRol.map((l) => esc(l.nombre)).join(", ")}. Sin rol, la utilidad no descuenta los sueldos. <a href="#personal" data-f="go-roles">Ir a roles</a>`) : "",
-      ...PPX.pagos.pendientes(db).filter((p) => ui.local === "todos" || p.localId === ui.local).map((p) => { const d = PPX.pagos.faltan(p); return alert(d < 0 ? "bad" : "warn", "pagos", `<b>${esc(p.concepto)}</b> (${esc(local(p.localId).nombre)}): ${PPX.pagos.estadoTxt(d).toLowerCase()}, ${fmt.date(p.proximo)}${p.monto ? ` · ${fmt.money(p.monto)}` : ""}. ${isAdmin() ? `<a role="button" tabindex="0" class="lnk" data-f="pago-pay" data-id="${p.id}">Registrar pago</a>` : ""}`); }),
-      ...db.reportes.filter((r) => r.tipo === "ROL" && r.estado === "CONFIRMADO" && !r.pago && (ui.local === "todos" || r.localId === ui.local)).map((r) => alert("warn", "personal", `<b>Rol aprobado sin pagar:</b> ${esc(local(r.localId).nombre)}, ${esc(r.periodoTxt)} (neto ${fmt.money(F.rolTotals(r).neto)}). Se descuenta del reporte diario cuando registres el pago. ${isAdmin() ? `<a role="button" tabindex="0" class="lnk" data-f="rol-pagar" data-id="${r.id}">Registrar pago</a>` : ""}`)),
+      ...pendientes(ui.local).map((x) => x.html),
       sinDetPct > 0.5 && s.caja > 0 ? alert("", "tag", `<b>${fmt.pct(sinDetPct)} de los egresos están sin detallar.</b> Si se registran por categoría, sabrás en qué se va el dinero. <a href="#diario">Ir a reportes diarios</a>`) : "",
     ].filter(Boolean);
 
+    const tablaRes = `<section class="card res-table" id="sec-res" aria-label="Resultado por local">
+      <div class="card-head"><div><h2>Estado de resultados por local</h2><p class="muted small">Utilidad = ingresos − egresos del día − sueldos</p></div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Local</th><th class="r">Ingresos</th><th class="r">Egresos del día</th><th class="r">Sueldos</th><th class="r">Utilidad</th><th class="r">Margen</th><th class="r hide-sm">Días reportados</th></tr></thead>
+        <tbody>${porLocal.map((x) => `<tr class="click" data-local="${x.l.id}" tabindex="0" title="Ver solo ${esc(x.l.nombre)}"><td><span class="rank" style="background:var(--s${x.i + 1})"></span><b>${esc(x.l.nombre)}</b></td><td class="r num"><b>${fmt.money(x.ingresos)}</b></td><td class="r num">${fmt.money(x.caja)}</td><td class="r num">${fmt.money(x.sueldos)}</td><td class="r num"><b style="color:${x.utilidad < 0 ? "var(--bad)" : "var(--good)"}">${fmt.money(x.utilidad)}</b></td><td class="r">${isFinite(x.margen) ? `<span class="pill ${marginClass(x.margen)}">${fmt.pct(x.margen)}</span>` : "—"}</td><td class="r num hide-sm">${x.dias}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td><b>Total</b></td>${["ingresos", "caja", "sueldos"].map((k) => `<td class="r num"><b>${fmt.money(porLocal.reduce((a, x) => a + x[k], 0))}</b></td>`).join("")}<td class="r num"><b>${fmt.money(porLocal.reduce((a, x) => a + x.utilidad, 0))}</b></td><td class="r">${totIng ? `<span class="pill ${marginClass(porLocal.reduce((a, x) => a + x.utilidad, 0) / totIng)}">${fmt.pct(porLocal.reduce((a, x) => a + x.utilidad, 0) / totIng)}</span>` : "—"}</td><td class="hide-sm"></td></tr></tfoot>
+      </table></div>
+    </section>`;
     return `
     <div class="page-head">
       <div class="lead"><span class="eyebrow">${greeting()}, ${esc(session.nombre.split(" ")[0])}</span><h1>Resumen de EduPan</h1>
@@ -2414,6 +2696,7 @@
         <div class="select-wrap"><select class="input" id="f-periodo" data-bind="periodo" aria-label="Período">${periodos.map(([k, x]) => `<option value="${k}" ${ui.periodo === k ? "selected" : ""}>${x}</option>`).join("")}</select></div>
         <div class="segmented" role="group" aria-label="Local">${locs.map(([k, x]) => `<button class="seg" aria-pressed="${ui.local === k}" data-local="${k}">${esc(x)}</button>`).join("")}</div>
         <button class="btn" data-act="to-informe">${ICON.informes} Informe Excel</button>
+        ${isAdmin() ? `<button class="btn primary" data-f="caja-new" data-loc="${ui.local === "todos" ? db.locales[0].id : ui.local}" data-fecha="${today()}">${ICON.plus} Registrar día</button>` : ""}
       </div>
     </div>
     ${nuevo ? `<section class="card welcome" aria-label="Primeros pasos">
@@ -2425,14 +2708,14 @@
       </div>
     </section>` : ""}
     <section class="kpis" aria-label="Indicadores">
-      <div class="kpi hero"><span class="eyebrow">Ingresos del período</span><span class="val num" data-count="${s.ingresos}" data-fmt="money">${fmt.money(s.ingresos)}</span>
+      <div class="kpi hero tap" data-f="kpi-go" data-to="diario" role="link" tabindex="0" title="Ver los reportes diarios"><span class="eyebrow">Ingresos del período</span><span class="val num" data-count="${s.ingresos}" data-fmt="money">${fmt.money(s.ingresos)}</span>
         <span class="sub">${sp.ingresos ? dTxt(delta(s.ingresos, sp.ingresos), "frente al período anterior") : `${s.reportes} reporte${s.reportes === 1 ? "" : "s"} diario${s.reportes === 1 ? "" : "s"}`}</span>
         <div class="spark">${sparkline(trend.map((x) => ({ v: x.ingresos })), "#E3B263")}</div></div>
-      <div class="kpi"><span class="eyebrow">Egresos</span><span class="val num" data-count="${s.egresos}" data-fmt="money">${fmt.money(s.egresos)}</span>
+      <div class="kpi tap" data-f="kpi-go" data-scroll="sec-gasto" role="link" tabindex="0" title="Ver en qué se gasta"><span class="eyebrow">Egresos</span><span class="val num" data-count="${s.egresos}" data-fmt="money">${fmt.money(s.egresos)}</span>
         <span class="sub">Del día ${fmt.money(s.caja)} · sueldos ${fmt.money(s.sueldos)}</span><div class="spark">${sparkline(trend.map((x) => ({ v: x.egresos })), "var(--s2)")}</div></div>
-      <div class="kpi"><span class="eyebrow">Utilidad</span><span class="val num ${s.utilidad < 0 ? "" : "good"}" style="${s.utilidad < 0 ? "color:var(--bad)" : ""}" data-count="${s.utilidad}" data-fmt="money">${fmt.money(s.utilidad)}</span>
+      <div class="kpi tap" data-f="kpi-go" data-scroll="sec-res" role="link" tabindex="0" title="Ver el estado de resultados"><span class="eyebrow">Utilidad</span><span class="val num ${s.utilidad < 0 ? "" : "good"}" style="${s.utilidad < 0 ? "color:var(--bad)" : ""}" data-count="${s.utilidad}" data-fmt="money">${fmt.money(s.utilidad)}</span>
         <span class="sub">${isFinite(s.margen) ? `${fmt.pct(s.margen)} de los ingresos` : "Ingresos − egresos"}${sp.ingresos ? " · " + dTxt(delta(s.utilidad, sp.utilidad), "") : ""}</span><div class="spark">${sparkline(trend.map((x) => ({ v: x.utilidad })), "var(--good)")}</div></div>
-      ${ui.local === "todos" && totIng > 0 ? `<div class="kpi"><span class="eyebrow">Local con más utilidad</span><span class="val val-name">${esc(best.l.nombre)}</span>
+      ${ui.local === "todos" && totIng > 0 ? `<div class="kpi tap" data-local="${best.l.id}" role="button" tabindex="0" title="Ver solo ${esc(best.l.nombre)}"><span class="eyebrow">Local con más utilidad</span><span class="val val-name">${esc(best.l.nombre)}</span>
           <span class="sub">${fmt.money(best.utilidad)} · ${fmt.pct(best.ingresos ? best.utilidad / best.ingresos : NaN)} de sus ingresos</span>
           <div class="share" role="img" aria-label="Participación de cada local en los ingresos">${porLocal.map((x) => `<i title="${esc(x.l.nombre)}: ${fmt.pct(x.ingresos / totIng)}" style="width:${(x.ingresos / totIng) * 100}%;background:var(--s${x.i + 1})"></i>`).join("")}</div>
           <span class="sub star">Más ingresos: <b>${esc([...porLocal].sort((a, b) => b.ingresos - a.ingresos)[0].l.nombre)}</b></span></div>`
@@ -2446,10 +2729,17 @@
       <div class="mini"><span>Días reportados</span><b class="num">${s.dias}</b></div>
     </div>
     <div class="two">
+      <section class="card" aria-label="Así va el mes">${ritmoMes()}</section>
+      <section class="card" aria-label="Para revisar">
+        <div class="card-head"><div><h2>Para revisar</h2><p class="muted small">${alerts.length ? `${alerts.length} pendiente${alerts.length === 1 ? "" : "s"}` : "Nada pendiente"}</p></div></div>
+        <div class="alerts">${alerts.length ? alerts.join("") : alert("good", "check", nuevo ? "Nada pendiente por ahora." : "Todo al día.")}</div>
+      </section>
+    </div>
+    <div class="two">
       <section class="card chart"><div class="card-head"><div><h2>Ingresos ${gran === "dia" ? "por día" : gran === "semana" ? "por semana" : "por mes"}</h2><p class="muted small">Barras: ingresos de cada local · línea roja: egresos del día</p></div>
-        <div class="legend">${db.locales.map((l, i) => `<span><i style="background:var(--s${i + 1})"></i>${esc(l.nombre)}</span>`).join("")}<span><i style="background:var(--bad)"></i>Egresos del día</span></div></div>
-        ${stackChart(ser, gran)}</section>
-      <section class="card chart"><div class="card-head"><div><h2>${ui.local === "todos" ? "Participación en ingresos" : "En qué se gasta"}</h2><p class="muted small">${ui.local === "todos" ? "Cuánto aporta cada local" : "Egresos por categoría"}</p></div></div>
+        <div class="legend">${db.locales.map((l, i) => `<span><i style="background:var(--s${i + 1})"></i>${esc(l.nombre)}</span>`).join("")}<span><i style="background:var(--bad)"></i>Egresos del día</span>${serPrev ? `<span><i class="dash"></i>Ingresos del período anterior</span>` : ""}</div></div>
+        ${stackChart(ser, gran, serPrev)}</section>
+      <section class="card chart" ${ui.local === "todos" ? "" : 'id="sec-gasto"'}><div class="card-head"><div><h2>${ui.local === "todos" ? "Participación en ingresos" : "En qué se gasta"}</h2><p class="muted small">${ui.local === "todos" ? "Cuánto aporta cada local" : "Egresos por categoría"}</p></div></div>
         ${ui.local === "todos" ? donut(porLocal.map((x) => ({ l: x.l.nombre, v: x.ingresos, c: `var(--s${x.i + 1})`, k: "Ingresos", extra: [["var(--good)", "Utilidad", fmt.money(x.utilidad)]] })), fmt.money(s.ingresos), "ingresos")
           : donut(catSegs(cats), fmt.money(s.egresos), "egresos")}</section>
     </div>
@@ -2462,22 +2752,14 @@
     </div>
     <div class="two">
       ${ui.local === "todos" ? `<section class="card chart"><div class="card-head"><div><h2>Tendencia</h2><p class="muted small">Ingresos, egresos y utilidad ${trendGran === "mes" ? "mes a mes" : "semana a semana"}</p></div></div>${lineTrend(trend, trendGran)}</section>
-        <section class="card chart"><div class="card-head"><div><h2>En qué se gasta</h2><p class="muted small">Egresos por categoría</p></div><a class="small" href="#diario">Ver reportes</a></div>${donut(catSegs(cats), fmt.money(s.egresos), "egresos")}</section>`
-      : `<section class="card" style="grid-column:1/-1"><div class="card-head"><div><h2>${esc(local(ui.local).nombre)}</h2><p class="muted small">${esc(local(ui.local).tipo)} · ${s.dias} día${s.dias === 1 ? "" : "s"} reportado${s.dias === 1 ? "" : "s"}</p></div></div>
+        ${wkCard(shown)}
+    </div>
+    <div class="two rev"><section class="card chart" id="sec-gasto"><div class="card-head"><div><h2>En qué se gasta</h2><p class="muted small">Egresos por categoría</p></div><a class="small" href="#diario">Ver reportes</a></div>${donut(catSegs(cats), fmt.money(s.egresos), "egresos")}</section>${tablaRes}`
+      : `${wkCard(shown)}<section class="card"><div class="card-head"><div><h2>${esc(local(ui.local).nombre)}</h2><p class="muted small">${esc(local(ui.local).tipo)} · ${s.dias} día${s.dias === 1 ? "" : "s"} reportado${s.dias === 1 ? "" : "s"}</p></div></div>
           <div class="totals num"><div><span class="muted">Ingresos</span><b>${fmt.money(s.ingresos)}</b></div><div><span class="muted">Egresos de los reportes diarios</span><span>− ${fmt.money(s.caja)}</span></div><div><span class="muted">Sueldos y beneficios</span><span>− ${fmt.money(s.sueldos)}</span></div><div><span class="muted"><b>Utilidad</b></span><b class="big" style="color:${s.utilidad < 0 ? "var(--bad)" : "var(--good)"}">${fmt.money(s.utilidad)}</b></div><div><span class="muted">Participación en los ingresos de EduPan</span><span>${fmt.pct(totIng ? s.ingresos / totIng : NaN)}</span></div></div></section>`}
     </div>
-    <section class="card" aria-label="Resultado por local">
-      <div class="card-head"><div><h2>Estado de resultados por local</h2><p class="muted small">Utilidad = ingresos − egresos del día − sueldos</p></div></div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Local</th><th class="r">Ingresos</th><th class="r">Egresos del día</th><th class="r">Sueldos</th><th class="r">Utilidad</th><th class="r">Margen</th><th class="r hide-sm">Días reportados</th></tr></thead>
-        <tbody>${porLocal.map((x) => `<tr><td><span class="rank" style="background:var(--s${x.i + 1})"></span><b>${esc(x.l.nombre)}</b></td><td class="r num"><b>${fmt.money(x.ingresos)}</b></td><td class="r num">${fmt.money(x.caja)}</td><td class="r num">${fmt.money(x.sueldos)}</td><td class="r num"><b style="color:${x.utilidad < 0 ? "var(--bad)" : "var(--good)"}">${fmt.money(x.utilidad)}</b></td><td class="r">${isFinite(x.margen) ? `<span class="pill ${marginClass(x.margen)}">${fmt.pct(x.margen)}</span>` : "—"}</td><td class="r num hide-sm">${x.dias}</td></tr>`).join("")}</tbody>
-        <tfoot><tr><td><b>Total</b></td>${["ingresos", "caja", "sueldos"].map((k) => `<td class="r num"><b>${fmt.money(porLocal.reduce((a, x) => a + x[k], 0))}</b></td>`).join("")}<td class="r num"><b>${fmt.money(porLocal.reduce((a, x) => a + x.utilidad, 0))}</b></td><td class="r">${totIng ? `<span class="pill ${marginClass(porLocal.reduce((a, x) => a + x.utilidad, 0) / totIng)}">${fmt.pct(porLocal.reduce((a, x) => a + x.utilidad, 0) / totIng)}</span>` : "—"}</td><td class="hide-sm"></td></tr></tfoot>
-      </table></div>
-    </section>
-    <section class="card" aria-label="Para revisar">
-      <div class="card-head"><h2>Para revisar</h2></div>
-      <div class="alerts">${alerts.length ? alerts.join("") : alert("good", "check", nuevo ? "Nada pendiente por ahora." : "Todo al día.")}</div>
-    </section>`;
+    ${ui.local === "todos" ? "" : tablaRes}
+`;
   }
 
   /* ---------- Excel: hojas de finanzas ---------- */
@@ -2497,13 +2779,21 @@
     const ds = el.dataset;
     switch (ds.f) {
       case "mes": ui[ds.key] = addMes(ui[ds.key] || curMes(), Number(ds.k)); return render();
+      case "dia-vista": ui.diaVista = ds.v; return render();
+      case "dia-ver": return openDiaDialog(ds.fecha);
+      case "kpi-go": {
+        if (ds.to) { location.hash = "#" + ds.to; return; }
+        const t = document.getElementById(ds.scroll); if (!t) return;
+        t.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+        t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash"); return;
+      }
       case "tab": e.preventDefault(); ui[ds.key] = ds.v; ui.viewId = null; ui.rolDraft = null; ui.rolNew = null; ui.catEdit = null; return render();
       case "set": ui[ds.key] = ds.v; return render();
       case "caja-new": return openCajaDialog(null, { localId: ds.loc, fecha: ds.fecha });
       case "pago-new": return openPagoDialog(null);
       case "pago-edit": if (e.target.closest("[data-f=pago-pay]")) return; return openPagoDialog(ds.id);
       case "pago-pay": return openPagarDialog(ds.id);
-      case "pago-pop": return showPagosPopup(true);
+      case "pago-pop": return showPendientes(true);
       case "prod-more": ui.prodLimit = (ui.prodLimit || 60) + 60; return render();
       case "inv-more": ui.invLimit = (ui.invLimit || 60) + 60; return render();
       case "cat-inicial": {
@@ -2516,7 +2806,7 @@
       case "cat-edit": ui.catEdit = ds.id; render(); $("#cat-ren")?.focus(); return;
       case "cat-cancel": ui.catEdit = null; return render();
       case "cat-toggle": { if (!isAdmin()) return; const c = db.categorias.find((x) => x.id === ds.id); c.activo = !c.activo; audit(c.activo ? "Categoría activada" : "Categoría desactivada", c.nombre); save(); return render(); }
-      case "cat-del": { if (!isAdmin()) return; const c = db.categorias.find((x) => x.id === ds.id); db.categorias = db.categorias.filter((x) => x.id !== ds.id); audit("Categoría eliminada", c.nombre); save(); render(); return toast("Categoría eliminada"); }
+      case "cat-del": { if (!isAdmin()) return; const c = db.categorias.find((x) => x.id === ds.id), snap = snapDb(["categorias"]); db.categorias = db.categorias.filter((x) => x.id !== ds.id); audit("Categoría eliminada", c.nombre); save(); render(); return toast("Categoría eliminada", { undo: undoWith(snap, `Categoría ${c.nombre}`) }); }
       case "emp-new": return openEmpDialog(null);
       case "emp-edit": return openEmpDialog(ds.id);
       case "rol-new": { if (!isAdmin()) return; const d = new Date(today() + "T12:00:00"), lunes = addDays(today(), -((d.getDay() + 6) % 7) - 7);
@@ -2542,7 +2832,7 @@
       }
       case "rol-del": ui.rolConfirm = ds.id; return render();
       case "rol-del-no": ui.rolConfirm = null; return render();
-      case "rol-del-ok": { const r = db.reportes.find((x) => x.id === ds.id); if (!r || r.estado !== "BORRADOR") return; db.reportes = db.reportes.filter((x) => x.id !== r.id); audit("Rol de pagos eliminado", `${local(r.localId).nombre} · ${r.periodoTxt}`); ui.rolConfirm = null; ui.viewId = null; save(); render(); return toast("Rol eliminado"); }
+      case "rol-del-ok": { const r = db.reportes.find((x) => x.id === ds.id); if (!r || r.estado !== "BORRADOR") return; const snap = snapDb(["reportes"]); db.reportes = db.reportes.filter((x) => x.id !== r.id); audit("Rol de pagos eliminado", `${local(r.localId).nombre} · ${r.periodoTxt}`); ui.rolConfirm = null; ui.viewId = null; save(); render(); return toast("Rol eliminado", { undo: undoWith(snap, `Rol de ${local(r.localId).nombre}, ${r.periodoTxt}`) }); }
       case "rol-xlsx": {
         const r = db.reportes.find((x) => x.id === ds.id);
         try { const bytes = PPX.excel.build(rolWorkbook(r), { title: "EduPan · Rol de pagos", author: session.nombre }); const name = `EduPan-rol-${r.localId}-${r.mes}${r.tramo === "M" ? "" : "-" + r.tramo}.xlsx`; PPX.excel.download(bytes, name); audit("Rol de pagos descargado", name); save(); toast("Excel del rol descargado"); }
@@ -2552,6 +2842,7 @@
     }
   });
   document.addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.matches(".kpi.tap, tr[data-local]")) { e.preventDefault(); e.target.click(); }
     if (e.key === "Enter" && e.target.matches("td[data-f],tr[data-f]")) e.target.click();
   });
   document.addEventListener("change", (e) => {
@@ -2746,22 +3037,7 @@
   }
 
   /** Ventana que aparece al entrar si hay pagos a 3 días o menos (o vencidos). */
-  function showPagosPopup(force) {
-    if (!session || !isAdmin()) return;
-    document.querySelector(".overlay.pagos-pop")?.remove();
-    const pend = PG.pendientes(db);
-    if (!pend.length) { if (force) toast("No hay pagos próximos"); return; }
-    const { ov, close } = dialog(`<div class="dialog wide" role="alertdialog" aria-modal="true" aria-labelledby="pop-t">
-      <div class="card-head" style="margin:0"><div><h2 id="pop-t">${ICON.clock} Pagos por hacer</h2><p class="muted small">${pend.length} pago${pend.length === 1 ? "" : "s"} vence${pend.length === 1 ? "" : "n"} en ${PG.AVISO_DIAS} días o menos. Este aviso aparece cada vez que entras hasta que lo registres.</p></div><button type="button" class="icon-btn" data-close aria-label="Cerrar">${ICON.x}</button></div>
-      <div class="pago-list">${pend.map(pagoItem).join("")}</div>
-      <div class="actions"><a class="btn ghost" href="#pagos" data-close>Ver todos los pagos</a><button type="button" class="btn" data-close>Recordarme después</button></div>
-    </div>`);
-    ov.classList.add("pagos-pop");
-    ov.addEventListener("click", (e) => {
-      const b = e.target.closest("[data-f=pago-pay]"); if (!b) return;
-      e.stopPropagation(); close(); openPagarDialog(b.dataset.id, () => showPagosPopup(false));
-    }, true);
-  }
+
 
   /* ---------- Ajustes ---------- */
   const canManageUsers = () => isAdmin() && (data.DEMO || !!session.duena);
@@ -2782,6 +3058,20 @@
       <div class="alerts">${fila("Respaldo de la base de datos", r, "cada semana")}${fila("Informe del mes anterior en Excel", i, "el día 1 de cada mes")}</div>
       ${!r && !i ? `<p class="muted small">Se activan una sola vez con Google Apps Script, siguiendo la sección «Envíos automáticos por correo» de la guía (GUIA-PASO-A-PASO.html). Llegan desde tu Gmail y no tienen costo.</p>` : ""}</div>`;
   }
+  /* ---------- App en el celular ---------- */
+  let installEvt = null;
+  const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  function appCard() {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const body = isStandalone() ? `<div class="note good">Ya estás usando EduPan como app en este equipo.</div>`
+      : installEvt ? `<div class="app-row"><img src="${IMG}icon-192.png" alt="" width="56" height="56"><div><b>Instala EduPan en este equipo</b><p class="muted small">Queda con su ícono en la pantalla de inicio, se abre sin la barra del navegador y arranca más rápido.</p></div><button class="btn primary" data-act="instalar">${ICON.plus} Instalar</button></div>`
+      : `<div class="app-row"><img src="${IMG}icon-192.png" alt="" width="56" height="56"><div><b>Ponla en la pantalla de inicio del celular</b>
+          <ol class="steps-list">${ios ? "<li>Abre esta página en <b>Safari</b>.</li><li>Toca <b>Compartir</b> (el cuadrito con la flecha hacia arriba).</li><li>Elige <b>Agregar a inicio</b> y luego <b>Agregar</b>.</li>"
+            : "<li>Abre esta página en <b>Chrome</b>.</li><li>Toca el menú <b>⋮</b> (arriba a la derecha).</li><li>Elige <b>Instalar app</b> o <b>Agregar a la pantalla principal</b>.</li>"}</ol>
+          ${data.DEMO ? `<p class="muted small">En esta vista previa no se puede instalar; funciona en tu página de Netlify.</p>` : ""}</div></div>`;
+    return `<section class="card"><div class="card-head"><div><h2>App en el celular</h2><p class="muted small">El mismo panel, como una app más del teléfono o la computadora.</p></div></div>${body}</section>`;
+  }
+
   function viewAjustes() {
     return `
     <div class="page-head"><div class="lead"><span class="eyebrow">Configuración</span><h1>Ajustes</h1><p>Locales, usuarios y registro de actividad.</p></div></div>
@@ -2791,6 +3081,7 @@
         <td>${isAdmin() ? `<select class="input" data-tipo="${l.id}" aria-label="Tipo de ${esc(l.nombre)}" style="min-width:140px">${["Panadería", "Pastelería"].map((x) => `<option ${l.tipo === x ? "selected" : ""}>${x}</option>`).join("")}</select>` : esc(l.tipo)}</td>
         <td>${isAdmin() ? `<input class="input" data-dir="${l.id}" value="${esc(l.direccion)}" placeholder="Pendiente" aria-label="Dirección de ${esc(l.nombre)}">` : esc(l.direccion || "Pendiente")}</td></tr>`).join("")}
       </tbody></table></div></section>
+    ${appCard()}
     <section class="card"><div class="card-head"><h2>Usuarios</h2></div>
       ${!data.DEMO ? `<p class="muted small" style="margin:-4px 0 12px">Cada persona entra con su correo (Google o correo y contraseña). Quien tenga «solo lectura» ve el panel, los reportes y los informes, pero no puede registrar ni cambiar nada.</p>` : ""}
       <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th>${canManageUsers() ? "<th></th>" : ""}</tr></thead><tbody>
@@ -2807,7 +3098,10 @@
       <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead><tbody>
       ${db.auditoria.slice(0, 40).map((a) => `<tr><td class="num" style="white-space:nowrap">${fmt.stamp(a.fecha)}</td><td style="white-space:nowrap">${esc(a.usuario)}</td><td style="white-space:nowrap"><b>${esc(a.accion)}</b></td><td class="muted">${esc(a.detalle)}</td></tr>`).join("")}
       </tbody></table></div></section>
-    ${data.DEMO ? `<section class="card" style="display:grid;gap:12px"><div><h2>Vista previa</h2><p class="muted small">Estas opciones existen solo para probar la vista previa.</p></div>
+    ${data.DEMO ? `<section class="card" style="display:grid;gap:12px"><div><h2>Ver tus datos reales aquí</h2><p class="muted small">Esta vista previa no se conecta a tu Firebase (solo tu página de Netlify puede, con tu correo autorizado). Para probar las novedades con tus datos: en tu página entra a <b>Ajustes → Descargar respaldo</b> y carga aquí ese archivo. Se queda solo en este navegador; tu base real no se toca.</p></div>
+      ${isAdmin() ? `<div class="actions" style="justify-content:flex-start"><label class="btn primary" for="restore-file">Cargar mi respaldo (.json)</label><input id="restore-file" type="file" accept="application/json,.json" hidden></div><div id="restore-box"></div>` : ""}
+    </section>
+    <section class="card" style="display:grid;gap:12px"><div><h2>Vista previa</h2><p class="muted small">Estas opciones existen solo para probar la vista previa.</p></div>
       <div class="actions" style="justify-content:flex-start">
         <button class="btn" data-act="as-jefe">${isAdmin() ? "Ver como jefe (solo lectura)" : "Volver a ver como administradora"}</button>
         ${isAdmin() ? `<button class="btn danger" data-act="reset">Volver a los datos de ejemplo</button>` : ""}
@@ -2865,6 +3159,9 @@
       ui.draft.desde = a; ui.draft.hasta = b; return render();
     }
     switch (ds.act) {
+      case "buscar": return openBuscar();
+      case "instalar": if (installEvt) { const ev = installEvt; ev.prompt(); ev.userChoice.finally(() => { installEvt = null; render(); }); } return;
+      case "inf-print": return printReport();
       case "logout":
         ui.popupDone = false;
         if (!data.DEMO && data.cloud.pending() && !confirm("Hay cambios que todavía se están guardando en la nube. ¿Salir de todas formas?")) return;
@@ -2933,9 +3230,9 @@
       case "det-delete": ui.confirmDelete = true; return render();
       case "del-cancel": ui.confirmDelete = false; return render();
       case "del-ok": {
-        const i = db.reportes.findIndex((x) => x.id === ui.viewId), r = db.reportes[i];
+        const i = db.reportes.findIndex((x) => x.id === ui.viewId), r = db.reportes[i], snap = snapDb(["reportes"]);
         if (r && (r.estado === "BORRADOR" || r.tipo === "VENTAS")) { db.reportes.splice(i, 1); audit(r.tipo === "VENTAS" ? "Venta eliminada" : "Borrador eliminado", `${MOV[r.tipo].label} · ${local(r.localId).nombre} ${fmt.period(r.desde, r.hasta)}${r.tipo === "VENTAS" ? " · " + fmt.money(reportTotals(r).ventas) : ""}`); save(); }
-        ui.viewId = null; ui.confirmDelete = false; render(); return toast(r && r.tipo === "VENTAS" ? "Venta eliminada" : "Borrador eliminado");
+        ui.viewId = null; ui.confirmDelete = false; render(); return toast(r && r.tipo === "VENTAS" ? "Venta eliminada" : "Borrador eliminado", r ? { undo: undoWith(snap, `${MOV[r.tipo].label} de ${local(r.localId).nombre}`) } : undefined);
       }
       case "as-jefe": session.rol = isAdmin() ? "LECTURA" : "ADMINISTRADORA"; data.store.saveSession(session); render(); return toast(isAdmin() ? "Viendo como administradora" : "Viendo como jefe: solo lectura");
       case "reset": ui.confirmReset = true; return render();
@@ -3082,5 +3379,9 @@
       else if (el.className === "sync") { el.className = "sync good"; el.textContent = "Guardado"; setTimeout(() => { if (el.className === "sync good") el.hidden = true; }, 1800); }
     });
     window.addEventListener("beforeunload", (e) => { if (data.cloud.pending()) { e.preventDefault(); e.returnValue = ""; } });
+    // App instalable: guarda la última versión para abrir rápido (los datos siempre vienen de Firebase)
+    if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   }
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; if (session && route() === "ajustes") render(); });
+  window.addEventListener("appinstalled", () => { installEvt = null; toast("EduPan quedó instalada en este equipo"); if (session && route() === "ajustes") render(); });
 })(window.PPX);
